@@ -12,6 +12,9 @@ let package = Package(
         ),
     ],
     dependencies: [
+        // Temporarily disabled due to Windows path length issues
+        // TODO: Enable after resolving submodule path issues
+        // .package(url: "https://github.com/azooKey/AzooKeyKanaKanjiConverter", from: "0.8.0"),
     ],
     targets: [
         .target(
@@ -24,6 +27,7 @@ let package = Package(
         .target(
             name: "azookey-engine",
             dependencies: [
+                // .product(name: "KanaKanjiConverterModule", package: "AzooKeyKanaKanjiConverter"),
                 "ffi"
             ],
             path: "Sources/azookey-engine",

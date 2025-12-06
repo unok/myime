@@ -1,6 +1,7 @@
 import Foundation
 
 /// Stub implementation for testing without AzooKeyKanaKanjiConverter
+/// TODO: Replace with real implementation after resolving Windows path length issues
 
 // MARK: - Stub Types
 
@@ -70,7 +71,7 @@ class KanaKanjiConverter {
     
     init() {}
     
-    init(dictionaryDirURL: URL) throws {
+    init(dictionaryDirectoryURL: URL) throws {
         // Stub
     }
     
@@ -172,7 +173,7 @@ public func initialize(_ dictionaryPath: UnsafePointer<CChar>?, _ memoryPath: Un
         converter = KanaKanjiConverter.withDefaultDictionary()
     } else {
         let dictURL = URL(fileURLWithPath: config.dictionaryPath)
-        converter = try? KanaKanjiConverter(dictionaryDirURL: dictURL)
+        converter = try? KanaKanjiConverter(dictionaryDirectoryURL: dictURL)
     }
 
     composingText = ComposingText()
@@ -228,10 +229,10 @@ public func getComposedText() -> UnsafePointer<CChar>? {
 
     // Return best candidate
     guard let first = currentCandidates.first else {
-        return UnsafePointer(strdup(""))
+        return UnsafePointer(_strdup(""))
     }
 
-    return UnsafePointer(strdup(first.text))
+    return UnsafePointer(_strdup(first.text))
 }
 
 @_silgen_name("GetCandidates")
@@ -246,10 +247,10 @@ public func getCandidates() -> UnsafePointer<CChar>? {
 
     guard let jsonData = try? JSONSerialization.data(withJSONObject: candidateTexts),
           let jsonString = String(data: jsonData, encoding: .utf8) else {
-        return UnsafePointer(strdup("[]"))
+        return UnsafePointer(_strdup("[]"))
     }
 
-    return UnsafePointer(strdup(jsonString))
+    return UnsafePointer(_strdup(jsonString))
 }
 
 @_silgen_name("SelectCandidate")
