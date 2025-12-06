@@ -38,3 +38,7 @@ Thumbs.db
 # Personal settings
 .claude/
 .github/
+
+# User configuration
+config.json
+userdata/

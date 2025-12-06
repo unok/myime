@@ -1,0 +1,6 @@
+[submodule "dictionaries/azooKey_dictionary_storage"]
+	path = dictionaries/azooKey_dictionary_storage
+	url = https://github.com/azooKey/azooKey_dictionary_storage.git
+[submodule "dictionaries/azooKey_emoji_dictionary_storage"]
+	path = dictionaries/azooKey_emoji_dictionary_storage
+	url = https://github.com/azooKey/azooKey_emoji_dictionary_storage.git
