@@ -34,3 +34,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Personal settings
+.claude/
+.github/
