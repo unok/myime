@@ -1,0 +1,36 @@
+# Build outputs
+build/
+*.dll
+*.exe
+*.pdb
+*.lib
+*.exp
+
+# Swift build
+.build/
+.swiftpm/
+Package.resolved
+
+# .NET build
+bin/
+obj/
+*.user
+*.suo
+*.cache
+.vs/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Temporary files
+*.tmp
+*.temp
