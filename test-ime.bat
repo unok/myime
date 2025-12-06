@@ -149,6 +149,7 @@ echo Running test program...
 echo ==============================================
 echo.
 cd /d "%TEST_OUTPUT%"
+chcp 65001 >nul
 TestIme.exe
 
 endlocal

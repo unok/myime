@@ -1,9 +1,6 @@
 import Foundation
 
-/// Stub implementation for testing without AzooKeyKanaKanjiConverter
-/// TODO: Replace with real implementation after resolving Windows path length issues
-
-// MARK: - Stub Types
+// MARK: - Stub Types (temporarily using stub instead of KanaKanjiConverterModule)
 
 struct ComposingText {
     private var text: String = ""
@@ -18,8 +15,12 @@ struct ComposingText {
         }
     }
     
+    mutating func deleteForwardFromCursorPosition(count: Int) {
+        // Not implemented in simple version
+    }
+    
     mutating func moveCursorFromCursorPosition(count: Int) {
-        // Stub implementation
+        // Not implemented in simple version
     }
     
     func getText() -> String {
@@ -72,27 +73,30 @@ class KanaKanjiConverter {
     init() {}
     
     init(dictionaryDirectoryURL: URL) throws {
-        // Stub
+        // Stub - dictionary not used in simple implementation
     }
     
     func requestCandidates(_ composingText: ComposingText, options: ConvertRequestOptions) -> ConversionResult {
-        // Simple stub conversion - just return hiragana
+        // Use SimpleKanaConverter for romaji to hiragana conversion
         let text = composingText.getText()
-        let candidates = [
-            Candidate(text: text),
-            Candidate(text: "変換テスト: " + text)
-        ]
+        let hiragana = SimpleKanaConverter.convert(text)
+        
+        var candidates = [Candidate(text: hiragana)]
+        
+        // Add the original text as a fallback candidate if different
+        if hiragana != text {
+            candidates.append(Candidate(text: text))
+        }
+        
         return ConversionResult(mainResults: candidates)
     }
     
     func setCompletedData(_ candidate: Candidate) {
-        // Stub
+        // Stub - learning not implemented
     }
 }
 
-// MARK: - Engine Implementation (using stubs)
-
-/// Global converter instance
+// MARK: - Global State
 // Note: nonisolated(unsafe) is used for global mutable state accessed from exported C functions
 nonisolated(unsafe) private var converter: KanaKanjiConverter?
 nonisolated(unsafe) private var composingText = ComposingText()
@@ -103,7 +107,7 @@ nonisolated(unsafe) private var config = EngineConfig()
 struct EngineConfig {
     var dictionaryPath: String = ""
     var memoryPath: String = ""
-    var zenzaiEnabled: Bool = true
+    var zenzaiEnabled: Bool = false
     var zenzaiInferenceLimit: Int = 10
     var zenzaiWeightPath: String = ""
 }
@@ -271,17 +275,17 @@ public func selectCandidate(_ index: Int32) {
 
 @_silgen_name("ShrinkText")
 public func shrinkText() {
-    // Stub
+    composingText.deleteForwardFromCursorPosition(count: 1)
 }
 
 @_silgen_name("ExpandText")
 public func expandText() {
-    // Stub
+    // Not implemented in current version
 }
 
 @_silgen_name("SetContext")
 public func setContext(_ precedingText: UnsafePointer<CChar>?) {
-    // Stub
+    // Context support not implemented yet
 }
 
 @_silgen_name("SetZenzaiEnabled")
@@ -298,4 +302,64 @@ public func setZenzaiInferenceLimit(_ limit: Int32) {
 public func freeString(_ str: UnsafePointer<CChar>?) {
     guard let str = str else { return }
     free(UnsafeMutablePointer(mutating: str))
+}
+
+// MARK: - Test API wrapper functions
+
+@_cdecl("azookey_create")
+public func azookey_create(_ configJson: UnsafePointer<CChar>?) -> UnsafeMutableRawPointer? {
+    guard let configJson = configJson else { return nil }
+    
+    let jsonString = String(cString: configJson)
+    
+    // Parse JSON configuration
+    guard let jsonData = jsonString.data(using: .utf8),
+          let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+        return nil
+    }
+    
+    // Update configuration
+    if let dictPath = json["dictionaryPath"] as? String {
+        config.dictionaryPath = dictPath
+    }
+    if let memPath = json["memoryPath"] as? String {
+        config.memoryPath = memPath
+    }
+    if let zenzaiEnabled = json["zenzaiEnabled"] as? Bool {
+        config.zenzaiEnabled = zenzaiEnabled
+    }
+    if let zenzaiLimit = json["zenzaiInferenceLimit"] as? Int {
+        config.zenzaiInferenceLimit = zenzaiLimit
+    }
+    if let zenzaiWeight = json["zenzaiWeightPath"] as? String {
+        config.zenzaiWeightPath = zenzaiWeight
+    }
+    
+    // Initialize converter
+    initialize(nil, nil)
+    
+    // Return a dummy handle (not nil to indicate success)
+    return UnsafeMutableRawPointer(bitPattern: 1)
+}
+
+@_cdecl("azookey_destroy")
+public func azookey_destroy(_ engine: UnsafeMutableRawPointer?) {
+    shutdown()
+}
+
+@_cdecl("azookey_convert")
+public func azookey_convert(_ engine: UnsafeMutableRawPointer?, _ input: UnsafePointer<CChar>?) -> UnsafePointer<CChar>? {
+    guard let input = input else { return nil }
+    
+    // Clear existing text and append new input
+    clearText()
+    appendText(input)
+    
+    // Get conversion result
+    return getComposedText()
+}
+
+@_cdecl("azookey_free_string")
+public func azookey_free_string(_ str: UnsafePointer<CChar>?) {
+    freeString(str)
 }
