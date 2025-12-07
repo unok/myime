@@ -64,8 +64,8 @@ echo.
 echo Building Swift package...
 echo Using Package.swift for remote dependencies...
 
-:: Copy minimal package configuration (without external dependencies)
-copy /y Package-minimal.swift Package.swift >nul
+:: Copy local package configuration (with patched AzooKey)
+copy /y Package-local.swift Package.swift >nul
 
 :: Try to build without explicit SDK paths first
 echo.

@@ -12,8 +12,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        // Temporarily comment out AzooKeyKanaKanjiConverter
-        // We'll add it back once platform issue is resolved
+        .package(path: "../AzooKeyKanaKanjiConverter-local"),
     ],
     targets: [
         .target(
@@ -26,7 +25,7 @@ let package = Package(
         .target(
             name: "azookey-engine",
             dependencies: [
-                // .product(name: "KanaKanjiConverterModule", package: "AzooKeyKanaKanjiConverter"),
+                .product(name: "KanaKanjiConverterModule", package: "AzooKeyKanaKanjiConverter-local"),
                 "ffi"
             ],
             path: "Sources/azookey-engine",

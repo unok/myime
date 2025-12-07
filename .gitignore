@@ -42,3 +42,7 @@ Thumbs.db
 # User configuration
 config.json
 userdata/
+
+# Local dependencies with patches
+src/AzooKeyKanaKanjiConverter-local/
+src/swift-tokenizers/
