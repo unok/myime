@@ -1,6 +1,7 @@
-using System; 
-using System.IO; 
-using System.Runtime.InteropServices; 
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json; 
  
 namespace TestIme 
@@ -19,8 +20,9 @@ namespace TestIme
         [DllImport("azookey-engine.dll", CallingConvention = CallingConvention.Cdecl)] 
         static extern void azookey_free_string(IntPtr str); 
  
-        static void Main() 
-        { 
+        static void Main()
+        {
+            Console.OutputEncoding = Encoding.UTF8;
             Console.WriteLine("=== MyIme Test Program ===\n"); 
  
             try 
@@ -56,7 +58,7 @@ namespace TestIme
                     IntPtr resultPtr = azookey_convert(engine, input); 
                     if (resultPtr != IntPtr.Zero) 
                     { 
-                        string result = Marshal.PtrToStringUTF8(resultPtr); 
+                        string result = Marshal.PtrToStringUTF8(resultPtr) ?? "(null)"; 
                         Console.WriteLine($"{input} -> {result}"); 
                         azookey_free_string(resultPtr); 
                     } 
@@ -76,8 +78,7 @@ namespace TestIme
                 Console.WriteLine($"Stack trace: {ex.StackTrace}"); 
             } 
  
-            Console.WriteLine("\nPress any key to exit..."); 
-            Console.ReadKey(); 
+            Console.WriteLine("\nTest completed."); 
         } 
     } 
 } 

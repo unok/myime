@@ -1,7 +1,7 @@
 import Foundation
-import KanaKanjiConverterModule
+import KanaKanjiConverterModuleWithDefaultDictionary
 
-// MARK: - Using KanaKanjiConverterModule with patched AzooKey v0.11.1
+// MARK: - Using KanaKanjiConverterModuleWithDefaultDictionary with patched AzooKey v0.11.1
 
 // MARK: - Global State
 // Note: nonisolated(unsafe) is used for global mutable state accessed from exported C functions
@@ -25,7 +25,7 @@ private func getOptions() -> ConvertRequestOptions {
 
     if config.zenzaiEnabled, !config.zenzaiWeightPath.isEmpty {
         let weightURL = URL(fileURLWithPath: config.zenzaiWeightPath)
-        zenzaiMode = .on(weight: weightURL, inferenceLimit: config.zenzaiInferenceLimit)
+        zenzaiMode = .on(weight: weightURL, inferenceLimit: config.zenzaiInferenceLimit, personalizationMode: nil)
     }
 
     let memoryURL = config.memoryPath.isEmpty ? nil : URL(fileURLWithPath: config.memoryPath)
@@ -35,8 +35,12 @@ private func getOptions() -> ConvertRequestOptions {
         requireEnglishPrediction: false,
         keyboardLanguage: .ja_JP,
         learningType: memoryURL != nil ? .inputAndOutput : .nothing,
-        memoryDirectoryURL: memoryURL,
-        zenzaiMode: zenzaiMode
+        memoryDirectoryURL: memoryURL ?? URL(fileURLWithPath: NSTemporaryDirectory()),
+        sharedContainerURL: memoryURL ?? URL(fileURLWithPath: NSTemporaryDirectory()),
+        textReplacer: TextReplacer.withDefaultEmojiDictionary(),
+        specialCandidateProviders: nil,
+        zenzaiMode: zenzaiMode,
+        metadata: nil
     )
 }
 
@@ -84,7 +88,8 @@ public func initialize(_ dictionaryPath: UnsafePointer<CChar>?, _ memoryPath: Un
         converter = KanaKanjiConverter.withDefaultDictionary()
     } else {
         let dictURL = URL(fileURLWithPath: config.dictionaryPath)
-        converter = try? KanaKanjiConverter(dictionaryDirectoryURL: dictURL)
+        let dicdataStore = DicdataStore(dictionaryURL: dictURL)
+        converter = KanaKanjiConverter(dicdataStore: dicdataStore)
     }
 
     composingText = ComposingText()
@@ -116,11 +121,11 @@ public func removeText(_ count: Int32) {
 public func moveCursor(_ offset: Int32) {
     if offset > 0 {
         for _ in 0..<offset {
-            composingText.moveCursorFromCursorPosition(count: 1)
+            _ = composingText.moveCursorFromCursorPosition(count: 1)
         }
     } else if offset < 0 {
         for _ in 0..<(-offset) {
-            composingText.moveCursorFromCursorPosition(count: -1)
+            _ = composingText.moveCursorFromCursorPosition(count: -1)
         }
     }
 }

@@ -1,0 +1,9 @@
+{
+  "logLevel": "debug",
+  "zenzaiEnabled": false,
+  "zenzaiWeightPath": "",
+  "vulkanDeviceIndex": 0,
+  "enableGPU": true,
+  "dictionaryPath": "./dictionaries",
+  "userDictionaryPath": "./userdata/user_dictionary.txt"
+}
