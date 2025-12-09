@@ -1,0 +1,264 @@
+# Copyright 2010-2021, Google Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+#     * Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above
+# copyright notice, this list of conditions and the following disclaimer
+# in the documentation and/or other materials provided with the
+# distribution.
+#     * Neither the name of Google Inc. nor the names of its
+# contributors may be used to endorse or promote products derived from
+# this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+# Description:
+#   System dictionary implementation of Mozc.
+
+load(
+    "//:build_defs.bzl",
+    "mozc_cc_library",
+    "mozc_cc_test",
+)
+
+package(default_visibility = ["//visibility:private"])
+
+mozc_cc_library(
+    name = "codec_interface",
+    hdrs = ["codec_interface.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_library(
+    name = "codec",
+    srcs = ["codec.cc"],
+    hdrs = [
+        "codec.h",
+        "codec_interface.h",
+    ],
+    deps = [
+        ":words_info",
+        "//base:singleton",
+        "//base:util",
+        "//base:vlog",
+        "//dictionary:dictionary_token",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_test(
+    name = "codec_test",
+    size = "small",
+    srcs = ["codec_test.cc"],
+    deps = [
+        ":codec",
+        ":words_info",
+        "//base:random",
+        "//base:util",
+        "//dictionary:dictionary_token",
+        "//testing:gunit_main",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/random:distributions",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_library(
+    name = "token_decode_iterator",
+    hdrs = ["token_decode_iterator.h"],
+    deps = [
+        ":codec_interface",
+        ":words_info",
+        "//base:japanese_util",
+        "//dictionary:dictionary_token",
+        "//storage/louds:louds_trie",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_library(
+    name = "system_dictionary",
+    srcs = ["system_dictionary.cc"],
+    hdrs = ["system_dictionary.h"],
+    visibility = ["//:__subpackages__"],
+    deps = [
+        ":codec",
+        ":key_expansion_table",
+        ":token_decode_iterator",
+        ":words_info",
+        "//base:japanese_util",
+        "//base:mmap",
+        "//base:thread",
+        "//base:util",
+        "//base/strings:unicode",
+        "//dictionary:dictionary_interface",
+        "//dictionary:dictionary_token",
+        "//dictionary/file:codec_factory",
+        "//dictionary/file:codec_interface",
+        "//dictionary/file:dictionary_file",
+        "//request:conversion_request",
+        "//storage/louds:bit_vector_based_array",
+        "//storage/louds:louds_trie",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_library(
+    name = "value_dictionary",
+    srcs = [
+        "value_dictionary.cc",
+    ],
+    hdrs = ["value_dictionary.h"],
+    visibility = ["//:__subpackages__"],
+    deps = [
+        ":codec",
+        "//base:util",
+        "//dictionary:dictionary_interface",
+        "//dictionary:dictionary_token",
+        "//dictionary:pos_matcher",
+        "//request:conversion_request",
+        "//storage/louds:louds_trie",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_library(
+    name = "system_dictionary_builder",
+    srcs = [
+        "system_dictionary_builder.cc",
+    ],
+    hdrs = ["system_dictionary_builder.h"],
+    visibility = ["//:__subpackages__"],
+    deps = [
+        ":codec",
+        ":words_info",
+        "//base:file_stream",
+        "//base:file_util",
+        "//base:japanese_util",
+        "//base:util",
+        "//base:vlog",
+        "//dictionary:dictionary_token",
+        "//dictionary/file:codec_factory",
+        "//dictionary/file:codec_interface",
+        "//dictionary/file:section",
+        "//storage/louds:bit_vector_based_array_builder",
+        "//storage/louds:louds_trie_builder",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_library(
+    name = "words_info",
+    hdrs = ["words_info.h"],
+)
+
+mozc_cc_test(
+    name = "system_dictionary_test",
+    size = "large",
+    srcs = [
+        "system_dictionary_test.cc",
+    ],
+    data = ["//data/dictionary_oss:dictionary00.txt"],
+    deps = [
+        ":system_dictionary",
+        ":system_dictionary_builder",
+        "//base:file_util",
+        "//base/file:temp_dir",
+        "//config:config_handler",
+        "//data_manager/testing:mock_data_manager",
+        "//dictionary:dictionary_interface",
+        "//dictionary:dictionary_mock",
+        "//dictionary:dictionary_test_util",
+        "//dictionary:dictionary_token",
+        "//dictionary:pos_matcher",
+        "//dictionary:text_dictionary_loader",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//request:conversion_request",
+        "//testing:gunit_main",
+        "//testing:mozctest",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_test(
+    name = "value_dictionary_test",
+    size = "medium",
+    srcs = ["value_dictionary_test.cc"],
+    deps = [
+        ":codec",
+        ":value_dictionary",
+        "//data_manager/testing:mock_data_manager",
+        "//dictionary:dictionary_interface",
+        "//dictionary:dictionary_mock",
+        "//dictionary:dictionary_test_util",
+        "//dictionary:dictionary_token",
+        "//dictionary:pos_matcher",
+        "//request:conversion_request",
+        "//storage/louds:louds_trie",
+        "//storage/louds:louds_trie_builder",
+        "//testing:gunit_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_library(
+    name = "key_expansion_table",
+    hdrs = ["key_expansion_table.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_test(
+    name = "key_expansion_table_test",
+    size = "small",
+    srcs = ["key_expansion_table_test.cc"],
+    deps = [
+        ":key_expansion_table",
+        "//testing:gunit_main",
+    ],
+)

@@ -1,0 +1,361 @@
+# Copyright 2010-2021, Google Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+#     * Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above
+# copyright notice, this list of conditions and the following disclaimer
+# in the documentation and/or other materials provided with the
+# distribution.
+#     * Neither the name of Google Inc. nor the names of its
+# contributors may be used to endorse or promote products derived from
+# this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+module(name = "mozc")
+
+# absl-cpp: 20250814.0 2025-08-15
+# https://github.com/abseil/abseil-cpp
+bazel_dep(
+    name = "abseil-cpp",
+    version = "20250814.0",
+    repo_name = "com_google_absl",
+)
+
+# protobuf: 32.0 2025-08-15
+# https://github.com/protocolbuffers/protobuf
+bazel_dep(
+    name = "protobuf",
+    version = "32.0",
+    repo_name = "com_google_protobuf",
+)
+
+# googletest: 1.17.0 2025-05-01
+# https://github.com/google/googletest
+bazel_dep(
+    name = "googletest",
+    version = "1.17.0",
+    repo_name = "com_google_googletest",
+)
+
+# platforms: 1.0.0 2025-05-22
+# https://github.com/bazelbuild/platforms/
+bazel_dep(
+    name = "platforms",
+    version = "1.0.0",
+)
+
+# bazel_skylib: 1.8.1 2024-07-08
+# https://github.com/bazelbuild/bazel-skylib/
+bazel_dep(
+    name = "bazel_skylib",
+    version = "1.8.1",
+)
+
+# rules_pkg: 1.1.0 2025-03-06
+# https://github.com/bazelbuild/rules_pkg
+bazel_dep(
+    name = "rules_pkg",
+    version = "1.1.0",
+)
+single_version_override(
+    module_name = "rules_pkg",
+    patches = [
+        # Patch to fix the failure of Bazel fetch.
+        "bazel/rules_pkg_MODULE.bazel.patch",
+    ],
+    version = "1.1.0",
+)
+
+# rules_python: 1.5.4 2025-08-28
+# https://github.com/bazelbuild/rules_python/
+bazel_dep(
+    name = "rules_python",
+    version = "1.5.4",
+)
+
+# Bazel macOS build (4.1.2 2025-08-07)
+# https://github.com/bazelbuild/rules_apple
+bazel_dep(
+    name = "rules_apple",
+    version = "4.1.2",
+    repo_name = "build_bazel_rules_apple",
+)
+
+# Apple Support for Bazel (1.23.1 2025-08-29)
+# https://github.com/bazelbuild/apple_support/
+## this must come above 'rules_cc'
+## https://github.com/bazelbuild/apple_support/blob/d87e8b07f3345e750834dbb6ce38c7c7d3b8b44b/README.md#bazel-7-setup
+bazel_dep(
+    name = "apple_support",
+    version = "1.23.1",
+    repo_name = "build_bazel_apple_support",
+)
+
+# rules_swift: 3.1.2 2025-08-06
+# https://github.com/bazelbuild/rules_swift/
+# While Mozc does not directly depends on rules_swift, it is still indirectly
+# used by rules_apple. To avoid the build failure on Windows, its version needs
+# to be 2.5.0 or higher.
+# https://github.com/bazelbuild/rules_swift/issues/1502
+bazel_dep(
+    name = "rules_swift",
+    version = "3.1.2",
+    repo_name = "build_bazel_rules_swift",
+)
+
+# rules_cc: 0.2.2 2025-08-28
+# https://github.com/bazelbuild/rules_cc/
+bazel_dep(
+    name = "rules_cc",
+    version = "0.2.2",
+)
+single_version_override(
+    module_name = "rules_cc",
+    patches = [
+        # Enable to build x86 (32-bit) executables with clang-cl.
+        # https://github.com/bazelbuild/rules_cc/pull/360
+        "bazel/rules_cc_BUILD.windows.tpl.patch",
+        "bazel/rules_cc_windows_cc_configure.bzl.patch",
+        "bazel/rules_cc_windows_cc_toolchain_config.bzl.patch",
+    ],
+    version = "0.2.2",
+)
+
+cc_configure = use_extension(
+    "@rules_cc//cc:extensions.bzl",
+    "cc_configure_extension",
+)
+use_repo(cc_configure, "local_config_cc")
+
+register_toolchains("@local_config_cc//:all")
+
+# Android NDK rules (0.1.3 2025-01-31)
+# https://github.com/bazelbuild/rules_android_ndk
+bazel_dep(
+    name = "rules_android_ndk",
+    version = "0.1.3",
+)
+single_version_override(
+    module_name = "rules_android_ndk",
+    patches = [
+        # Might be removed after the folloing PR.
+        # https://github.com/bazelbuild/rules_android_ndk/pull/63
+        "bazel/rules_android_ndk.patch",
+    ],
+    version = "0.1.3",
+)
+
+android_ndk_repository_extension = use_extension(
+    "@rules_android_ndk//:extension.bzl",
+    "android_ndk_repository_extension",
+)
+android_ndk_repository_extension.configure(
+    path = "$WORKSPACE_ROOT/third_party/ndk/android-ndk-r29",
+)
+use_repo(android_ndk_repository_extension, "androidndk")
+
+register_toolchains("@androidndk//:all")
+
+new_local_repository = use_repo_rule(
+    "@bazel_tools//tools/build_defs/repo:local.bzl",
+    "new_local_repository",
+)
+
+pkg_config_repository = use_repo_rule(
+    "@//bazel:pkg_config_repository.bzl",
+    "pkg_config_repository",
+)
+
+# iBus
+pkg_config_repository(
+    name = "ibus",
+    packages = [
+        "glib-2.0",
+        "gobject-2.0",
+        "ibus-1.0",
+    ],
+)
+
+# Qt for Linux
+pkg_config_repository(
+    name = "qt_linux",
+    packages = [
+        "Qt6Core",
+        "Qt6Gui",
+        "Qt6Widgets",
+    ],
+)
+
+# Qt for macOS
+qt_mac_repository = use_repo_rule("@//bazel:qt_mac_repository.bzl", "qt_mac_repository")
+
+MACOS_QT_PATH = "/usr/local/Qt-6.5.2"
+
+qt_mac_repository(
+    name = "qt_mac",
+    default_path = MACOS_QT_PATH,  # can be replaced with MOZC_QT_PATH envvar.
+)
+
+# Qt for Windows
+new_local_repository(
+    name = "qt_win",
+    build_file = "@//bazel:BUILD.qt_win.bazel",
+    path = "third_party/qt",
+)
+
+# Windows SDK
+windows_sdk_repository = use_repo_rule(
+    "@//bazel:windows_sdk_repository.bzl",
+    "windows_sdk_repository",
+)
+
+windows_sdk_repository(
+    name = "windows_sdk",
+)
+
+# dotnet tool repository (to load "wix")
+dotnet_tool_repository = use_repo_rule(
+    "@//bazel:dotnet_tool_repository.bzl",
+    "dotnet_tool_repository",
+)
+
+dotnet_tool_repository(
+    name = "wix",
+    version = "5.0.2",
+)
+
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+
+# Material icons
+http_file(
+    name = "material_icon_dictionary_png",
+    downloaded_file_path = "dictionary.png",
+    sha256 = "6d2ac7befa038d4f32e07136293acaf5d8645a4daecb6d063f34be2ffea59b55",
+    urls = [
+        "https://raw.githubusercontent.com/google/material-design-icons/4.0.0/png/action/chrome_reader_mode/materialiconsoutlined/48dp/1x/outline_chrome_reader_mode_black_48dp.png",
+    ],
+)
+
+http_file(
+    name = "material_icon_dictionary_svg",
+    downloaded_file_path = "dictionary.svg",
+    sha256 = "a4c7b9bfb442a7497b72d74358c31034c4fef1ab2a50659834784580751ac04d",
+    urls = [
+        "https://raw.githubusercontent.com/google/material-design-icons/4.0.0/src/action/chrome_reader_mode/materialiconsoutlined/24px.svg",
+    ],
+)
+
+http_file(
+    name = "material_icon_properties_png",
+    downloaded_file_path = "properties.png",
+    sha256 = "c4ae8bb7992f43157be9d026f76a7039af6e0e3de0f220842208dfda8c38714a",
+    urls = [
+        "https://raw.githubusercontent.com/google/material-design-icons/4.0.0/png/action/settings/materialiconsround/48dp/1x/round_settings_black_48dp.png",
+    ],
+)
+
+http_file(
+    name = "material_icon_properties_svg",
+    downloaded_file_path = "properties.svg",
+    sha256 = "9b01b133be1caffc680f132d385d0e594262d6cfd29759a63c428050b83fe628",
+    urls = [
+        "https://raw.githubusercontent.com/google/material-design-icons/4.0.0/src/action/settings/materialiconsround/24px.svg",
+    ],
+)
+
+http_file(
+    name = "material_icon_tool_png",
+    downloaded_file_path = "tool.png",
+    sha256 = "269433bf6d6948a93ab6a57a73ceb5930870223046052cfffe01eeca37327d3e",
+    urls = [
+        "https://raw.githubusercontent.com/google/material-design-icons/4.0.0/png/action/build/materialicons/48dp/1x/baseline_build_black_48dp.png",
+    ],
+)
+
+http_file(
+    name = "material_icon_tool_svg",
+    downloaded_file_path = "tool.svg",
+    sha256 = "df34fba3d09778db69503a23b688761051dbf65b5bccb0d7b729c69ff61c3804",
+    urls = [
+        "https://raw.githubusercontent.com/google/material-design-icons/4.0.0/src/action/build/materialicons/24px.svg",
+    ],
+)
+
+# Note that there is also 'archive_override', which wraps 'http_archive'.
+# https://bazel.build/rules/lib/globals/module#archive_override
+# Note also that 'git_override' isn't an option here because 'bazelisk fetch'
+# would fail. https://github.com/bazelbuild/bazel/issues/5116
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# Windows Implementation Library (WIL)
+# https://github.com/microsoft/wil/
+http_archive(
+    name = "com_microsoft_wil",
+    build_file = "@//bazel:BUILD.wil.bazel",
+    sha256 = "f116af6cd96b8404d5e3cd6ef18853f7baa9c7d96930e741591fea8b5a3ef919",
+    strip_prefix = "wil-1.0.230629.1",
+    url = "https://github.com/microsoft/wil/archive/refs/tags/v1.0.230629.1.zip",
+)
+
+# Google Toolbox for Mac
+# https://github.com/google/google-toolbox-for-mac
+# We just need UnitTesting, so strip to the directory and skip dependencies.
+GTM_GIT_SHA = "8fbaae947b87c1e66c0934493168fc6d583ed889"
+
+http_archive(
+    name = "google_toolbox_for_mac",
+    build_file = "@//bazel:BUILD.google_toolbox_for_mac.bazel",
+    patch_args = ["-p2"],
+    patches = ["@//bazel:google_toolbox_for_mac.patch"],
+    sha256 = "424bca6571778496efa5328ffcca26edf083e282da7074d30b3e980516cea2a4",
+    strip_prefix = "google-toolbox-for-mac-%s/UnitTesting" % GTM_GIT_SHA,
+    urls = [
+        "https://github.com/google/google-toolbox-for-mac/archive/%s.zip" % GTM_GIT_SHA,
+    ],
+)
+
+# Japanese Usage Dictionary (2025-01-25)
+JA_USAGE_DICT_TAG = "2025-01-25"
+
+http_archive(
+    name = "ja_usage_dict",
+    sha256 = "140f24f71f7d78d5eb5b93a9c079f44f23728dca5ab16bf857fe8a3fa1bf20ed",
+    strip_prefix = "japanese-usage-dictionary-%s" % JA_USAGE_DICT_TAG,
+    url = "https://github.com/hiroyuki-komatsu/japanese-usage-dictionary/archive/refs/tags/%s.zip" % JA_USAGE_DICT_TAG,
+)
+
+# Zip code (2025-08-30, 33524763837473258e7ba2f14b17fc3a70519831)
+# https://github.com/hiroyuki-komatsu/japanpost_zipcode/ contains snapshots of the zip code data
+# with version control.
+# The data files are mirror of the following files.
+# * https://www.post.japanpost.jp/zipcode/dl/jigyosyo/zip/jigyosyo.zip
+# * https://www.post.japanpost.jp/zipcode/dl/kogaki/zip/ken_all.zip
+http_archive(
+    name = "zip_code_jigyosyo",
+    build_file_content = "exports_files([\"JIGYOSYO.CSV\"])",
+    sha256 = "8b0c5e9f720dba6d600a2683a260b8f04d14f463d45d10893e7ba08424405a1e",
+    url = "https://github.com/hiroyuki-komatsu/japanpost_zipcode/raw/33524763837473258e7ba2f14b17fc3a70519831/jigyosyo.zip",
+)
+
+http_archive(
+    name = "zip_code_ken_all",
+    build_file_content = "exports_files([\"KEN_ALL.CSV\"])",
+    sha256 = "47a3e63e1379f707af9c49df5c4fa0534332173c73c61f93d14555673bed7599",
+    url = "https://github.com/hiroyuki-komatsu/japanpost_zipcode/raw/33524763837473258e7ba2f14b17fc3a70519831/ken_all.zip",
+)

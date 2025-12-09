@@ -1,0 +1,76 @@
+// Microsoft Visual C++ generated resource script.
+//
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "winres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// Icon
+IDI_ICON1   ICON  "data/images/win/product_icon.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+// Japanese resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_JPN)
+#ifdef _WIN32
+LANGUAGE LANG_JAPANESE, SUBLANG_DEFAULT
+#endif //_WIN32
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+#ifndef MOZC_RES_INTERNAL_NAME
+  #if defined(GOOGLE_JAPANESE_INPUT_BUILD)
+    #define MOZC_RES_INTERNAL_NAME "GoogleIMEJaTool"
+  #elif defined(MOZC_BUILD)
+    #define MOZC_RES_INTERNAL_NAME "mozc_tool"
+  #endif
+#endif
+#ifndef MOZC_RES_ORIGINAL_FILENAME
+  #if defined(GOOGLE_JAPANESE_INPUT_BUILD)
+    #define MOZC_RES_ORIGINAL_FILENAME "GoogleIMEJaTool.exe"
+  #elif defined(MOZC_BUILD)
+    #define MOZC_RES_ORIGINAL_FILENAME "mozc_tool.exe"
+  #endif
+#endif
+#ifndef MOZC_RES_FILE_DESCRIPTION
+  #if defined(GOOGLE_JAPANESE_INPUT_BUILD)
+    #define MOZC_RES_FILE_DESCRIPTION "Google 日本語入力 ツール"
+  #elif defined(MOZC_BUILD)
+    #define MOZC_RES_FILE_DESCRIPTION "Mozc Tool"
+  #endif
+#endif
+#ifndef MOZC_RES_FILETYPE
+  #define MOZC_RES_FILETYPE VFT_APP
+#endif
+
+#ifdef MOZC_RES_USE_TEMPLATE
+  #include "build_tools/mozc_win32_resource_template.rc"
+#endif    // MOZC_RES_USE_TEMPLATE
+
+
+#endif    // Japanese resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

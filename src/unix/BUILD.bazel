@@ -1,0 +1,119 @@
+# Copyright 2010-2021, Google Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+#     * Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above
+# copyright notice, this list of conditions and the following disclaimer
+# in the documentation and/or other materials provided with the
+# distribution.
+#     * Neither the name of Google Inc. nor the names of its
+# contributors may be used to endorse or promote products derived from
+# this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+load("//:build_defs.bzl", "mozc_py_binary", "mozc_select")
+load(
+    "//:config.bzl",
+    "EMACS_MOZC_CLIENT_DIR",
+    "EMACS_MOZC_HELPER_DIR",
+    "IBUS_COMPONENT_DIR",
+    "IBUS_MOZC_INSTALL_DIR",
+    "IBUS_MOZC_PATH",
+    "LINUX_MOZC_ICONS_DIR",
+    "LINUX_MOZC_SERVER_DIR",
+)
+
+package(default_visibility = ["//visibility:private"])
+
+genrule(
+    name = "icons",
+    srcs = [
+        "//data/images:product_icon_32bpp-128.png",
+        "//data/images:direct.svg",
+        "//data/images:full_ascii.svg",
+        "//data/images:full_katakana.svg",
+        "//data/images:half_ascii.svg",
+        "//data/images:half_katakana.svg",
+        "//data/images:hiragana.svg",
+        "//data/images:icon.svg",
+        "//data/images/unix:48x48/alpha_full.png",
+        "//data/images/unix:48x48/alpha_half.png",
+        "//data/images/unix:48x48/direct.png",
+        "//data/images/unix:48x48/hiragana.png",
+        "//data/images/unix:48x48/katakana_full.png",
+        "//data/images/unix:48x48/katakana_half.png",
+    ] + mozc_select(
+        default = [
+            "//data/images/unix:ui-dictionary.png",
+            "//data/images/unix:ui-properties.png",
+            "//data/images/unix:ui-tool.png",
+        ],
+        oss = [
+            "@material_icon_dictionary_png//file",
+            "@material_icon_dictionary_svg//file",
+            "@material_icon_properties_png//file",
+            "@material_icon_properties_svg//file",
+            "@material_icon_tool_png//file",
+            "@material_icon_tool_svg//file",
+        ],
+    ),
+    outs = ["icons.zip"],
+    cmd = "$(location :build_icons) --inputs $(SRCS) --output $@",
+    tools = [":build_icons"],
+    visibility = [
+        "//unix:__subpackages__",
+    ],
+)
+
+mozc_py_binary(
+    name = "build_icons",
+    srcs = ["build_icons.py"],
+)
+
+genrule(
+    name = "package",
+    srcs = [
+        ":icons",
+        "//gui/tool:mozc_tool",
+        "//server:mozc_server",
+        "//unix/emacs:mozc_emacs_helper",
+        "//unix/ibus:gen_mozc_xml",
+        "//unix/ibus:ibus_mozc",
+        "//unix/emacs:mozc.el",
+        "//renderer/qt:mozc_renderer",
+    ],
+    outs = ["mozc.zip"],
+    cmd = " ".join([
+        "$(location :build_package) --inputs $(SRCS) --output $@",
+        '--mozc_dir "' + LINUX_MOZC_SERVER_DIR + '"',
+        '--mozc_icons_dir "' + LINUX_MOZC_ICONS_DIR + '"',
+        '--ibus_component_dir "' + IBUS_COMPONENT_DIR + '"',
+        '--ibus_mozc_path "' + IBUS_MOZC_PATH + '"',
+        '--ibus_mozc_install_dir "' + IBUS_MOZC_INSTALL_DIR + '"',
+        '--emacs_client_dir "' + EMACS_MOZC_CLIENT_DIR + '"',
+        '--emacs_helper_dir "' + EMACS_MOZC_HELPER_DIR + '"',
+    ]),
+    tools = [":build_package"],
+    visibility = ["//:__pkg__"],
+)
+
+mozc_py_binary(
+    name = "build_package",
+    srcs = ["build_package.py"],
+)

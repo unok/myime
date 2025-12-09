@@ -1,0 +1,557 @@
+# Copyright 2010-2021, Google Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+#     * Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above
+# copyright notice, this list of conditions and the following disclaimer
+# in the documentation and/or other materials provided with the
+# distribution.
+#     * Neither the name of Google Inc. nor the names of its
+# contributors may be used to endorse or promote products derived from
+# this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+load(
+    "//:build_defs.bzl",
+    "mozc_cc_library",
+    "mozc_cc_test",
+    "mozc_select",
+    "mozc_select_enable_supplemental_model",
+)
+
+package(default_visibility = ["//visibility:private"])
+
+mozc_cc_library(
+    name = "data_loader",
+    srcs = ["data_loader.cc"],
+    hdrs = ["data_loader.h"],
+    deps = [
+        ":modules",
+        "//base:hash",
+        "//base:thread",
+        "//data_manager",
+        "//protocol:engine_builder_cc_proto",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+mozc_cc_test(
+    name = "data_loader_test",
+    srcs = ["data_loader_test.cc"],
+    data = [
+        "data_loader_test.cc",
+        "//data_manager/oss:mozc.data",
+        "//data_manager/testing:mock_mozc.data",
+    ],
+    deps = [
+        ":data_loader",
+        "//data_manager",
+        "//protocol:engine_builder_cc_proto",
+        "//testing:gunit_main",
+        "//testing:mozctest",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+mozc_cc_library(
+    name = "engine_interface",
+    hdrs = ["engine_interface.h"],
+    visibility = [
+        "//:__subpackages__",
+        "//converter:__pkg__",
+        "//ios:__pkg__",
+        "//session:__pkg__",
+    ],
+    deps = [
+        ":engine_converter_interface",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//protocol:engine_builder_cc_proto",
+        "//protocol:user_dictionary_storage_cc_proto",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_library(
+    name = "supplemental_model_interface",
+    hdrs = ["supplemental_model_interface.h"],
+    visibility = [
+        "//:__subpackages__",
+        "//prediction:__pkg__",
+    ],
+    deps = [
+        "//composer:query",
+        "//prediction:result",
+        "//protocol:commands_cc_proto",
+        "//protocol:engine_builder_cc_proto",
+        "//request:conversion_request",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_library(
+    name = "supplemental_model_mock",
+    testonly = 1,
+    hdrs = ["supplemental_model_mock.h"],
+    visibility = [
+        "//prediction:__pkg__",
+        "//rewriter:__pkg__",
+    ],
+    deps = [
+        ":supplemental_model_interface",
+        "//composer:query",
+        "//prediction:result",
+        "//protocol:commands_cc_proto",
+        "//protocol:engine_builder_cc_proto",
+        "//request:conversion_request",
+        "//testing:gunit",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_library(
+    name = "modules",
+    srcs = ["modules.cc"],
+    hdrs = ["modules.h"],
+    visibility = [
+        "//:__subpackages__",
+        "//prediction:__pkg__",
+    ],
+    deps = [
+        ":supplemental_model_interface",
+        "//converter:connector",
+        "//converter:segmenter",
+        "//data_manager",
+        "//dictionary:dictionary_impl",
+        "//dictionary:dictionary_interface",
+        "//dictionary:pos_group",
+        "//dictionary:pos_matcher",
+        "//dictionary:single_kanji_dictionary",
+        "//dictionary:suffix_dictionary",
+        "//dictionary:user_dictionary",
+        "//dictionary:user_pos",
+        "//dictionary/system:system_dictionary",
+        "//dictionary/system:value_dictionary",
+        "//prediction:suggestion_filter",
+        "//prediction:zero_query_dict",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ] + mozc_select_enable_supplemental_model([
+        "//supplemental_model:supplemental_model_factory",
+    ]),
+)
+
+mozc_cc_test(
+    name = "modules_test",
+    srcs = ["modules_test.cc"],
+    deps = [
+        ":modules",
+        ":supplemental_model_interface",
+        "//data_manager/testing:mock_data_manager",
+        "//dictionary:dictionary_interface",
+        "//dictionary:dictionary_mock",
+        "//dictionary:pos_matcher",
+        "//testing:gunit_main",
+    ] + mozc_select_enable_supplemental_model([
+        "//supplemental_model:supplemental_model_factory",
+        "//supplemental_model:supplemental_model_registration",
+    ]),
+)
+
+mozc_cc_library(
+    name = "engine",
+    srcs = [
+        "engine.cc",
+    ],
+    hdrs = ["engine.h"],
+    visibility = [
+        "//:__subpackages__",
+    ],
+    deps = [
+        ":data_loader",
+        ":engine_converter",
+        ":engine_converter_interface",
+        ":engine_interface",
+        ":minimal_converter",
+        ":modules",
+        ":supplemental_model_interface",
+        "//converter",
+        "//converter:converter_interface",
+        "//converter:immutable_converter_interface",
+        "//converter:immutable_converter_no_factory",
+        "//data_manager",
+        "//dictionary:user_dictionary_session_handler",
+        "//prediction:predictor",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//protocol:engine_builder_cc_proto",
+        "//protocol:user_dictionary_storage_cc_proto",
+        "//rewriter",
+        "//rewriter:rewriter_interface",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_test(
+    name = "engine_test",
+    srcs = ["engine_test.cc"],
+    data = [
+        "//data_manager/oss:mozc.data",
+        "//data_manager/testing:mock_mozc.data",
+    ],
+    deps = [
+        ":engine",
+        ":modules",
+        ":supplemental_model_interface",
+        "//data_manager",
+        "//data_manager/testing:mock_data_manager",
+        "//protocol:engine_builder_cc_proto",
+        "//testing:gunit_main",
+        "//testing:mozctest",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+mozc_cc_library(
+    name = "engine_mock",
+    testonly = 1,
+    hdrs = ["engine_mock.h"],
+    visibility = ["//session:__pkg__"],
+    deps = [
+        ":engine_converter_interface",
+        ":engine_interface",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//testing:gunit",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+mozc_cc_library(
+    name = "engine_factory",
+    hdrs = ["engine_factory.h"],
+    visibility = [
+        "//converter:__pkg__",
+        "//server:__pkg__",
+        "//session:__pkg__",
+    ],
+    deps = mozc_select(
+        android = [":android_engine_factory"],
+        default = [":google_engine_factory"],
+        oss = [":oss_engine_factory"],
+    ),
+)
+
+mozc_cc_library(
+    name = "eval_engine_factory",
+    srcs = ["eval_engine_factory.cc"],
+    hdrs = ["eval_engine_factory.h"],
+    visibility = [
+        "//:__subpackages__",
+        "//converter:__pkg__",
+    ],
+    deps = [
+        ":engine",
+        "//data_manager",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+filegroup(
+    name = "eval_engine_data",
+    srcs = mozc_select(
+        default = [
+            "//data_manager/android:mozc.data",
+            "//data_manager/google:mozc.data",
+            "//data_manager/oss:mozc.data",
+        ],
+        oss = [
+            "//data_manager/oss:mozc.data",
+        ],
+    ),
+    visibility = ["//converter:__pkg__"],
+)
+
+mozc_cc_library(
+    name = "google_engine_factory",
+    hdrs = ["google_engine_factory.h"],
+    tags = ["manual"],
+    visibility = [
+        "//converter:__pkg__",
+        "//evaluation:__subpackages__",
+    ],
+    deps = [
+        ":engine",
+        "//data_manager/google:google_data_manager",
+        "//prediction:predictor",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+mozc_cc_library(
+    name = "android_engine_factory",
+    hdrs = ["android_engine_factory.h"],
+    tags = ["manual"],
+    visibility = [
+        "//converter:__pkg__",
+        "//evaluation:__subpackages__",
+    ],
+    deps = [
+        ":engine",
+        "//data_manager/android:android_data_manager",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+mozc_cc_library(
+    name = "oss_engine_factory",
+    hdrs = ["oss_engine_factory.h"],
+    visibility = ["//evaluation:__subpackages__"],
+    deps = [
+        ":engine",
+        "//data_manager/oss:oss_data_manager",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+mozc_cc_library(
+    name = "mock_data_engine_factory",
+    testonly = True,
+    srcs = ["mock_data_engine_factory.cc"],
+    hdrs = ["mock_data_engine_factory.h"],
+    visibility = [
+        "//converter:__pkg__",
+        "//evaluation:__pkg__",
+        "//rewriter:__pkg__",
+        "//session:__pkg__",
+    ],
+    deps = [
+        ":engine",
+        "//data_manager/testing:mock_data_manager",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+mozc_cc_library(
+    name = "minimal_converter",
+    srcs = ["minimal_converter.cc"],
+    hdrs = ["minimal_converter.h"],
+    visibility = [
+        "//engine:__subpackages__",
+    ],
+    deps = [
+        "//base/strings:assign",
+        "//converter:attribute",
+        "//converter:converter_interface",
+        "//converter:segments",
+        "//request:conversion_request",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_library(
+    name = "engine_converter_interface",
+    hdrs = ["engine_converter_interface.h"],
+    visibility = ["//session:__pkg__"],
+    deps = [
+        "//composer",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//transliteration",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_library(
+    name = "engine_converter",
+    srcs = ["engine_converter.cc"],
+    hdrs = ["engine_converter.h"],
+    visibility = ["//session:__pkg__"],
+    deps = [
+        ":candidate_list",
+        ":engine_converter_interface",
+        ":engine_output",
+        "//base:text_normalizer",
+        "//base:util",
+        "//base:vlog",
+        "//composer",
+        "//config:config_handler",
+        "//converter:attribute",
+        "//converter:converter_interface",
+        "//converter:segments",
+        "//protocol:candidate_window_cc_proto",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//request:conversion_request",
+        "//transliteration",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_test(
+    name = "engine_converter_test",
+    size = "small",
+    timeout = "moderate",
+    srcs = ["engine_converter_test.cc"],
+    shard_count = 8,
+    tags = ["noandroid"],  # TODO(b/73698251): disabled due to errors
+    visibility = ["//converter:__subpackages__"],
+    deps = [
+        ":candidate_list",
+        ":engine_converter",
+        ":engine_converter_interface",
+        "//base:util",
+        "//composer",
+        "//composer:table",
+        "//converter:attribute",
+        "//converter:converter_mock",
+        "//converter:inner_segment",
+        "//converter:segments",
+        "//converter:segments_matchers",
+        "//data_manager/testing:mock_data_manager",
+        "//protocol:candidate_window_cc_proto",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//request:conversion_request",
+        "//request:request_test_util",
+        "//testing:gunit_main",
+        "//testing:mozctest",
+        "//testing:testing_util",
+        "//transliteration",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_test(
+    name = "engine_converter_stress_test",
+    size = "small",
+    timeout = "long",
+    srcs = ["engine_converter_stress_test.cc"],
+    shard_count = 8,
+    deps = [
+        ":engine",
+        ":engine_converter",
+        ":mock_data_engine_factory",
+        "//base:random",
+        "//composer",
+        "//composer:table",
+        "//config:config_handler",
+        "//converter:converter_interface",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//testing:gunit_main",
+        "//testing:mozctest",
+        "//transliteration",
+        "@com_google_absl//absl/flags:flag",
+    ],
+)
+
+mozc_cc_library(
+    name = "candidate_list",
+    srcs = ["candidate_list.cc"],
+    hdrs = ["candidate_list.h"],
+    deps = [
+        "//base:hash",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_library(
+    name = "engine_output",
+    srcs = ["engine_output.cc"],
+    hdrs = ["engine_output.h"],
+    deps = [
+        ":candidate_list",
+        "//base:port",
+        "//base:text_normalizer",
+        "//base:util",
+        "//base:version",
+        "//base/strings:assign",
+        "//composer",
+        "//converter:attribute",
+        "//converter:segments",
+        "//protocol:candidate_window_cc_proto",
+        "//protocol:commands_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_test(
+    name = "candidate_list_test",
+    size = "small",
+    srcs = ["candidate_list_test.cc"],
+    deps = [
+        ":candidate_list",
+        "//testing:gunit_main",
+    ],
+)
+
+mozc_cc_test(
+    name = "engine_output_test",
+    size = "small",
+    timeout = "moderate",
+    srcs = ["engine_output_test.cc"],
+    deps = [
+        ":candidate_list",
+        ":engine_output",
+        "//base:text_normalizer",
+        "//base:util",
+        "//converter:attribute",
+        "//converter:segments",
+        "//protocol:candidate_window_cc_proto",
+        "//protocol:commands_cc_proto",
+        "//testing:gunit_main",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)

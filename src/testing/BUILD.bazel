@@ -1,0 +1,197 @@
+# Copyright 2010-2021, Google Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+#     * Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above
+# copyright notice, this list of conditions and the following disclaimer
+# in the documentation and/or other materials provided with the
+# distribution.
+#     * Neither the name of Google Inc. nor the names of its
+# contributors may be used to endorse or promote products derived from
+# this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+load(
+    "//:build_defs.bzl",
+    "mozc_cc_library",
+    "mozc_cc_test",
+    "mozc_objc_library",
+    "mozc_select",
+)
+load("//bazel:run_build_tool.bzl", "mozc_run_build_tool")
+
+package(default_visibility = ["//:__subpackages__"])
+
+alias(
+    name = "testing",
+    actual = "gunit_main",
+)
+
+mozc_run_build_tool(
+    name = "gen_mozc_data_dir_header",
+    srcs = {
+        # Used only to get the directory name.
+        "--path_to_be_embedded": ["mozctest.h"],
+    },
+    outs = {
+        "--output": "mozc_data_dir.h",
+    },
+    args = [
+        "--constant_name=kMozcDataDir",
+        "-p=2",
+    ],
+    tool = "//build_tools:embed_pathname",
+)
+
+mozc_cc_library(
+    name = "mozc_data_dir_header",
+    hdrs = [":gen_mozc_data_dir_header"],
+)
+
+mozc_cc_library(
+    name = "gunit_main_internal",
+    testonly = True,
+    srcs = ["gtest_main.cc"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":gunit",
+        "@com_google_absl//absl/flags:flag",
+    ] + mozc_select(
+        client = ["//base:init_mozc"],
+        linux = [],
+        oss = ["//base:init_mozc"],
+    ),
+)
+
+mozc_cc_library(
+    name = "gunit_main",
+    testonly = True,
+    hdrs = [
+        "gmock.h",
+        "gunit.h",
+    ],
+    deps = [
+        ":gunit",
+        "@com_google_absl//absl/flags:flag",
+    ] + mozc_select(
+        default = ["//testing/base/public:gunit_main"],
+        linux = ["//testing/base/public:gunit_main"],
+        macos = [
+            ":gunit_main_internal",
+            "@com_google_googletest//:gtest",
+        ],
+        oss = [":gunit_main_internal"],
+        wasm = [":gunit_main_internal"],
+        windows = [
+            ":gunit_main_internal",
+            "@com_google_googletest//:gtest",
+        ],
+    ),
+)
+
+mozc_cc_library(
+    name = "test_peer",
+    hdrs = ["test_peer.h"],
+)
+
+mozc_cc_library(
+    name = "testing_util",
+    testonly = True,
+    srcs = ["testing_util.cc"],
+    hdrs = ["testing_util.h"],
+    deps = [
+        ":gunit",
+        "//base/protobuf:descriptor",
+        "//base/protobuf:message",
+        "//base/protobuf:text_format",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+mozc_cc_library(
+    name = "gunit",
+    testonly = True,
+    srcs = [],
+    hdrs = [
+        "gmock.h",
+        "gunit.h",
+    ],
+    deps = [
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+mozc_objc_library(
+    name = "gunit_main_objc",
+    testonly = True,
+    hdrs = [
+        "gmock.h",
+        "gunit.h",
+    ],
+    sdk_frameworks = [
+        "XCTest",  # fixdeps: keep
+    ],
+    tags = [
+        "avoid_dep",
+    ],  # The overwhelming majority of the build targets in mozc are C++.
+    deps = [
+        "@com_google_googletest//:gtest",
+        "@google_toolbox_for_mac//:GTM_GoogleTestRunner_GTM_USING_XCTEST",  # fixdeps: keep
+    ],
+)
+
+mozc_cc_library(
+    name = "mozctest",
+    testonly = True,
+    srcs = ["mozctest.cc"],
+    hdrs = ["mozctest.h"],
+    visibility = [
+        "//:__subpackages__",
+    ],
+    deps = [
+        ":gunit",
+        ":mozc_data_dir_header",
+        "//base:environ",
+        "//base:file_util",
+        "//base:system_util",
+        "//base/file:temp_dir",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_test(
+    name = "mozctest_test",
+    srcs = ["mozctest_test.cc"],
+    data = ["mozctest_test.cc"],
+    deps = [
+        ":gunit_main",
+        ":mozctest",
+        "//base:system_util",
+        "//base/file:temp_dir",
+    ],
+)
