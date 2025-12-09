@@ -107,7 +107,8 @@ public func shutdown() {
 public func appendText(_ input: UnsafePointer<CChar>?) {
     guard let input = input else { return }
     let inputString = String(cString: input)
-    composingText.insertAtCursorPosition(inputString, inputStyle: .roman2kana)
+    // Use .direct for hiragana input from Mozc (not roman2kana)
+    composingText.insertAtCursorPosition(inputString, inputStyle: .direct)
 }
 
 @_silgen_name("RemoveText")
