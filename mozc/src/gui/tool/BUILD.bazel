@@ -1,0 +1,161 @@
+# Copyright 2010-2021, Google Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+#     * Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above
+# copyright notice, this list of conditions and the following disclaimer
+# in the documentation and/or other materials provided with the
+# distribution.
+#     * Neither the name of Google Inc. nor the names of its
+# contributors may be used to endorse or promote products derived from
+# this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+load(
+    "//:build_defs.bzl",
+    "MOZC_TAGS",
+    "mozc_cc_library",
+    "mozc_select",
+    "mozc_win32_cc_prod_binary",
+    "mozc_win32_resource_from_template",
+)
+load("//:config.bzl", "BRANDING")
+load(
+    "//bazel:qt.bzl",
+    "mozc_cc_qt_binary",
+    "mozc_cc_qt_library",
+    "mozc_macos_qt_application",
+)
+
+mozc_cc_library(
+    name = "prelauncher_lib",
+    srcs = ["prelauncher_libmain.cc"],
+    deps = [
+        "//client",
+        "//client:client_interface",
+        "//renderer:renderer_client",
+        "@com_google_absl//absl/flags:flag",
+    ] + mozc_select(
+        macos = ["//base/mac:mac_util"],
+    ),
+)
+
+mozc_cc_qt_library(
+    name = "mozc_tool_lib",
+    srcs = [
+        "mozc_tool_libmain.cc",
+    ],
+    hdrs = [
+        "mozc_tool_libmain.h",
+    ],
+    deps = [
+        "//base:const",
+        "//base:init_mozc",
+        "//base:process",
+        "//base:run_level",
+        "//base:system_util",
+        "//base:util",
+        "//base:version",
+        "//gui/about_dialog",
+        "//gui/administration_dialog",
+        "//gui/base:gui_base",
+        "//gui/base:singleton_window_helper",
+        "//gui/config_dialog",
+        "//gui/dictionary_tool",
+        "//gui/error_message_dialog",
+        "//gui/post_install_dialog",
+        "//gui/word_register_dialog",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log",
+    ] + mozc_select(
+        macos = [
+            ":prelauncher_lib",
+            "//base:environ",
+            "//base:file_util",
+        ],
+        windows = [
+            "//gui/base:win_util",
+        ],
+    ),
+)
+
+mozc_cc_qt_library(
+    name = "mozc_tool_main_lib",
+    srcs = ["mozc_tool_main.cc"],
+    deps = [
+        ":mozc_tool_lib",
+        "//base:init_mozc",
+        "//gui/base:gui_base",
+    ] + mozc_select(
+        windows = [
+            "//base/win32:winmain",
+        ],
+    ),
+)
+
+mozc_win32_resource_from_template(
+    name = "mozc_tool_win32_resource",
+    src = "mozc_tool.rc",
+    manifests = [
+        "mozc_tool.exe.manifest",
+    ],
+    tags = MOZC_TAGS.WIN_ONLY,
+    target_compatible_with = ["@platforms//os:windows"],
+)
+
+mozc_cc_qt_binary(
+    name = "mozc_tool",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        ":mozc_tool_main_lib",
+    ] + mozc_select(
+        windows = [
+            ":mozc_tool_win32_resource",
+        ],
+    ),
+)
+
+mozc_win32_cc_prod_binary(
+    name = "mozc_tool_win",
+    executable_name_map = {
+        "Mozc": "mozc_tool.exe",
+        "GoogleJapaneseInput": "GoogleIMEJaTool.exe",
+    },
+    static_crt = False,
+    tags = MOZC_TAGS.WIN_ONLY,
+    target_compatible_with = ["@platforms//os:windows"],
+    visibility = ["//:__subpackages__"],
+    deps = [
+        ":mozc_tool_main_lib",
+        ":mozc_tool_win32_resource",
+        "@qt_win",
+    ],
+)
+
+mozc_macos_qt_application(
+    name = "mozc_tool_macos",
+    bundle_name = "MozcTool",
+    deps = [":mozc_tool_main_lib"],
+)
+
+mozc_macos_qt_application(
+    name = "mozc_prelauncher_macos",
+    bundle_name = BRANDING + "Prelauncher",
+    deps = [":mozc_tool_main_lib"],
+)

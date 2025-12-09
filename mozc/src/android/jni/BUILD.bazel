@@ -1,0 +1,176 @@
+# Copyright 2010-2021, Google Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+#     * Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above
+# copyright notice, this list of conditions and the following disclaimer
+# in the documentation and/or other materials provided with the
+# distribution.
+#     * Neither the name of Google Inc. nor the names of its
+# contributors may be used to endorse or promote products derived from
+# this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+load(
+    "//:build_defs.bzl",
+    "MOZC_TAGS",
+    "mozc_cc_binary",
+    "mozc_cc_library",
+    "mozc_py_binary",
+    "mozc_select",
+)
+load(":cross_build_binary.bzl", "cross_build_binary")
+
+_TARGET_COMPATIBLE_WITH = [
+    "@platforms//os:android",
+]
+
+mozc_cc_library(
+    name = "mozcjni",
+    srcs = ["mozcjni.cc"],
+    linkopts = mozc_select(
+        android = ["-llog"],
+    ),
+    tags = MOZC_TAGS.ANDROID_ONLY,
+    # Scheuklappen: keep
+    visibility = ["//visibility:private"],
+    deps = [
+        "//base:singleton",
+        "//base:system_util",
+        "//base:util",
+        "//data_manager",
+        "//engine",
+        "//protocol:commands_cc_proto",
+        "//session:session_handler",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
+)
+
+mozc_cc_binary(
+    name = "mozc",
+    srcs = [],
+    linkopts = [
+        # 16 KB page size support is a requirement to target Android 15+.
+        # https://developer.android.com/guide/practices/page-sizes
+        "-Wl,-z,max-page-size=16384",
+    ],
+    linkshared = 1,
+    tags = MOZC_TAGS.ANDROID_ONLY,
+    target_compatible_with = _TARGET_COMPATIBLE_WITH,
+    visibility = ["//visibility:private"],
+    deps = [
+        ":mozcjni",
+    ],
+)
+
+platform(
+    name = "armeabi-v7a",
+    constraint_values = [
+        "@platforms//cpu:armv7",
+        "@platforms//os:android",
+    ],
+)
+
+platform(
+    name = "arm64-v8a",
+    constraint_values = [
+        "@platforms//cpu:arm64",
+        "@platforms//os:android",
+    ],
+)
+
+platform(
+    name = "x86_64",
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:android",
+    ],
+)
+
+platform(
+    name = "x86_32",
+    constraint_values = [
+        "@platforms//cpu:x86_32",
+        "@platforms//os:android",
+    ],
+)
+
+cross_build_binary(
+    name = "mozc.arm64",
+    cpu = "arm64-v8a",
+    platform = ":arm64-v8a",
+    tags = MOZC_TAGS.ANDROID_ONLY,
+    target = ":mozc",
+)
+
+cross_build_binary(
+    name = "mozc.arm32",
+    cpu = "armv7",
+    platform = ":armeabi-v7a",
+    tags = MOZC_TAGS.ANDROID_ONLY,
+    target = ":mozc",
+)
+
+cross_build_binary(
+    name = "mozc.x86_64",
+    cpu = "x86_64",
+    platform = ":x86_64",
+    tags = MOZC_TAGS.ANDROID_ONLY,
+    target = ":mozc",
+)
+
+cross_build_binary(
+    name = "mozc.x86_32",
+    cpu = "x86_32",
+    platform = ":x86_32",
+    tags = MOZC_TAGS.ANDROID_ONLY,
+    target = ":mozc",
+)
+
+mozc_py_binary(
+    name = "make_archive",
+    srcs = ["make_archive.py"],
+)
+
+genrule(
+    name = "native_libs",
+    srcs = [
+        ":mozc.arm64",
+        ":mozc.arm32",
+        ":mozc.x86_64",
+        ":mozc.x86_32",
+    ],
+    outs = ["native_libs.zip"],
+    cmd = " ".join([
+        "$(location :make_archive)",
+        "--arm64=$(location :mozc.arm64)",
+        "--arm32=$(location :mozc.arm32)",
+        "--x86_64=$(location :mozc.x86_64)",
+        "--x86_32=$(location :mozc.x86_32)",
+        "--output $@",
+    ]),
+    tags = MOZC_TAGS.ANDROID_ONLY,
+    tools = [":make_archive"],
+    visibility = ["//:__subpackages__"],
+)

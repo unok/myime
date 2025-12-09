@@ -1,0 +1,101 @@
+# Copyright 2010-2021, Google Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+#     * Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above
+# copyright notice, this list of conditions and the following disclaimer
+# in the documentation and/or other materials provided with the
+# distribution.
+#     * Neither the name of Google Inc. nor the names of its
+# contributors may be used to endorse or promote products derived from
+# this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+load(
+    "//:build_defs.bzl",
+    "mozc_cc_binary",
+    "mozc_cc_library",
+    "mozc_cc_test",
+)
+
+package(default_visibility = ["//visibility:private"])
+
+exports_files(["mozc.el"])
+
+mozc_cc_binary(
+    name = "mozc_emacs_helper",
+    srcs = ["mozc_emacs_helper.cc"],
+    copts = [
+        "$(STACK_FRAME_UNLIMITED)",  # mozc_emacs_helper.cc
+    ],
+    visibility = ["//unix:__subpackages__"],
+    deps = [
+        ":mozc_emacs_helper_lib",
+        "//base:init_mozc",
+        "//base:version",
+        "//client",
+        "//config:config_handler",
+        "//protocol:commands_cc_proto",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+mozc_cc_library(
+    name = "mozc_emacs_helper_lib",
+    srcs = [
+        "client_pool.cc",
+        "mozc_emacs_helper_lib.cc",
+    ],
+    hdrs = [
+        "client_pool.h",
+        "mozc_emacs_helper_lib.h",
+    ],
+    deps = [
+        "//base:util",
+        "//base/protobuf:descriptor",
+        "//base/protobuf:message",
+        "//client",
+        "//composer:key_parser",
+        "//protocol:candidate_window_cc_proto",
+        "//protocol:commands_cc_proto",
+        "//storage:lru_cache",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+mozc_cc_test(
+    name = "mozc_emacs_helper_lib_test",
+    size = "small",
+    srcs = ["mozc_emacs_helper_lib_test.cc"],
+    deps = [
+        ":mozc_emacs_helper_lib",
+        "//base/protobuf:message",
+        "//protocol:candidate_window_cc_proto",
+        "//protocol:commands_cc_proto",
+        "//testing:gunit_main",
+        "//testing:testing_util",
+        "@com_google_absl//absl/strings",
+    ],
+)

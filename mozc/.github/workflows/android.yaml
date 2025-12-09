@@ -1,0 +1,83 @@
+name: CI for Android
+# https://github.com/google/mozc/blob/master/docs/build_mozc_for_android.md
+
+# Run on push.
+on: push
+
+permissions:
+  contents: read
+
+# Prevent previous workflows from running.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build_on_linux:
+    # https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: setup
+        run: |
+          sudo apt-get update
+
+      - name: Try to restore update_deps cache
+        uses: actions/cache@v4
+        with:
+          path: src/third_party_cache
+          key: update_deps-${{ runner.os }}-${{ hashFiles('src/build_tools/update_deps.py') }}
+
+      - name: Install dependencies
+        working-directory: ./src
+        # This command uses src/third_party_cache as the download cache.
+        run: |
+          python3 build_tools/update_deps.py
+
+      - name: build
+        working-directory: ./src
+        run: |
+          bazelisk build --config oss_android package --config release_build
+
+      - name: upload artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: native_libs.zip
+          path: src/bazel-bin/android/jni/native_libs.zip
+          if-no-files-found: warn
+
+  build_on_mac:
+    # https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Try to restore update_deps cache
+        uses: actions/cache@v4
+        with:
+          path: src/third_party_cache
+          key: update_deps-${{ runner.os }}-${{ hashFiles('src/build_tools/update_deps.py') }}
+
+      - name: Install dependencies
+        working-directory: ./src
+        # This command uses src/third_party_cache as the download cache.
+        run: |
+          python3 build_tools/update_deps.py
+
+      - name: build
+        working-directory: ./src
+        run: |
+          bazelisk build --config oss_android package --config release_build

@@ -1,0 +1,212 @@
+# Copyright 2010-2021, Google Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+#     * Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above
+# copyright notice, this list of conditions and the following disclaimer
+# in the documentation and/or other materials provided with the
+# distribution.
+#     * Neither the name of Google Inc. nor the names of its
+# contributors may be used to endorse or promote products derived from
+# this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+load(
+    "//:build_defs.bzl",
+    "MOZC_TAGS",
+    "mozc_cc_library",
+    "mozc_cc_test",
+    "mozc_select",
+)
+load(
+    "//bazel:qt.bzl",
+    "mozc_cc_qt_library",
+    "mozc_qt_moc",
+    "mozc_qt_rcc",
+)
+load("//bazel/win32:build_defs.bzl", "features_gdi")
+
+package(default_visibility = ["//gui:__subpackages__"])
+
+mozc_cc_library(
+    name = "encoding_util",
+    srcs = ["encoding_util.cc"],
+    hdrs = [
+        "encoding_util.h",
+        "sjis_to_ucs2_table.h",
+    ],
+    deps = [
+        "//base:util",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_test(
+    name = "encoding_util_test",
+    srcs = ["encoding_util_test.cc"],
+    deps = [
+        ":encoding_util",
+        "//testing:gunit_main",
+        "@com_google_absl//absl/strings:string_view",
+    ] + mozc_select(
+        windows = ["//base/win32:wide_char"],
+    ),
+)
+
+mozc_qt_moc(
+    name = "base_files",
+    srcs = ["window_title_modifier.h"],
+    outs = ["moc_window_title_modifier.cc"],
+)
+
+exports_files([
+    "tr_en.qm",
+    "tr_ja.qm",
+])
+
+mozc_qt_rcc(
+    name = "qrc_tr",
+    srcs = [
+        "tr_en.qm",
+        "tr_ja.qm",
+    ],
+    outs = ["qrc_tr.cc"],
+    qrc_file = "tr.qrc",
+    qrc_name = "qrc_tr",
+)
+
+mozc_cc_qt_library(
+    name = "gui_base",
+    srcs = [
+        "debug_util.cc",
+        "table_util.cc",
+        "util.cc",
+        "window_title_modifier.cc",
+        ":base_files",
+        ":qrc_tr",
+    ],
+    hdrs = [
+        "debug_util.h",
+        "table_util.h",
+        "util.h",
+        "window_title_modifier.h",
+    ],
+    deps = [
+        ":encoding_util",
+        "//base:singleton",
+        "//base:system_util",
+        "//base:util",
+        "//base:version",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+    ] + mozc_select(
+        windows = [":win_util"],
+    ),
+)
+
+mozc_cc_library(
+    name = "win_util",
+    srcs = ["win_util.cc"],
+    hdrs = ["win_util.h"],
+    features = features_gdi(),
+    tags = MOZC_TAGS.WIN_ONLY,
+    target_compatible_with = ["@platforms//os:windows"],
+    deps = [
+        "//base:system_util",
+        "//base/strings:zstring_view",
+        "//base/win32:com",
+        "//base/win32:hresult",
+        "//base/win32:wide_char",
+        "@com_google_absl//absl/log",
+        "@com_microsoft_wil//:wil",
+    ],
+)
+
+mozc_cc_qt_library(
+    name = "msime_user_dictionary_importer",
+    srcs = [
+        "msime_user_dictionary_importer.cc",
+    ],
+    hdrs = [
+        "msime_user_dictionary_importer.h",
+    ],
+    deps = [
+        "//dictionary:user_dictionary_importer",
+    ] + mozc_select(
+        windows = [
+            ":encoding_util",
+            "@com_google_absl//absl/log",
+            "//base:vlog",
+            "//base/win32:wide_char",
+        ],
+    ),
+)
+
+mozc_cc_library(
+    name = "setup_util",
+    srcs = [
+        "setup_util.cc",
+    ],
+    hdrs = [
+        "setup_util.h",
+    ],
+    deps = [
+        "//dictionary:user_dictionary_storage",
+        "//dictionary:user_dictionary_util",
+    ] + mozc_select(
+        windows = [
+            "//win32/base:imm_util",
+            "@com_google_absl//absl/log",
+            ":msime_user_dictionary_importer",
+            ":win_util",
+            "//dictionary:user_dictionary_importer",
+        ],
+    ),
+)
+
+mozc_cc_qt_library(
+    name = "singleton_window_helper",
+    srcs = [
+        "singleton_window_helper.cc",
+    ],
+    hdrs = [
+        "singleton_window_helper.h",
+    ],
+    deps = [
+        ":gui_base",
+        "//base:file_stream",
+        "//base:process_mutex",
+        "//base:util",
+        "//base:version",
+        "//ipc",
+        "//ipc:window_info_cc_proto",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:string_view",
+    ] + mozc_select(
+        windows = [
+            ":win_util",
+            "//base:system_util",
+            "//base/win32:wide_char",
+            "@com_microsoft_wil//:wil",
+        ],
+    ),
+)

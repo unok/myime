@@ -1,0 +1,383 @@
+# Copyright 2010-2021, Google Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+#     * Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above
+# copyright notice, this list of conditions and the following disclaimer
+# in the documentation and/or other materials provided with the
+# distribution.
+#     * Neither the name of Google Inc. nor the names of its
+# contributors may be used to endorse or promote products derived from
+# this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
+load(
+    "//:build_defs.bzl",
+    "mozc_cc_binary",
+    "mozc_cc_library",
+    "mozc_cc_test",
+    "mozc_py_binary",
+    "mozc_select",
+)
+load(
+    "//:config.bzl",
+    "IBUS_MOZC_ICON_PATH",
+    "IBUS_MOZC_INSTALL_DIR",
+    "IBUS_MOZC_PATH",
+    "LINUX_MOZC_SERVER_DIR",
+)
+
+package(default_visibility = ["//visibility:private"])
+
+licenses(["notice"])
+
+mozc_py_binary(
+    name = "gen_mozc_xml_main",
+    srcs = ["gen_mozc_xml.py"],
+)
+
+genrule(
+    name = "gen_mozc_xml",
+    outs = ["mozc.xml"],
+    cmd = " ".join([
+        "LANG=C",
+        "$(location :gen_mozc_xml_main)",
+        "--branding=Mozc",
+        "--server_dir=" + LINUX_MOZC_SERVER_DIR,
+        "--ibus_mozc_path=" + IBUS_MOZC_PATH,
+        "--ibus_mozc_icon_path=" + IBUS_MOZC_ICON_PATH,
+        "> $@",
+    ]),
+    tools = [":gen_mozc_xml_main"],
+    visibility = ["//unix:__subpackages__"],
+)
+
+genrule(
+    name = "gen_main_h",
+    outs = ["main.h"],
+    cmd = " ".join([
+        "LANG=C",
+        "$(location :gen_mozc_xml_main)",
+        "--branding=Mozc",
+        "--output_cpp",
+        "--server_dir=" + LINUX_MOZC_SERVER_DIR,
+        "--ibus_mozc_path=" + IBUS_MOZC_PATH,
+        "--ibus_mozc_icon_path=" + IBUS_MOZC_ICON_PATH,
+        "> $@",
+    ]),
+    tools = [":gen_mozc_xml_main"],
+)
+
+mozc_cc_library(
+    name = "ibus_header",
+    hdrs = mozc_select(linux = ["ibus_header.h"]),
+    deps = mozc_select(
+        linux = ["//third_party/ibus"],
+        oss_linux = ["@ibus//:ibus"],
+    ),
+)
+
+mozc_cc_library(
+    name = "ibus_wrapper",
+    srcs = mozc_select(linux = ["ibus_wrapper.cc"]),
+    hdrs = mozc_select(linux = ["ibus_wrapper.h"]),
+    deps = [
+        "@com_google_absl//absl/strings",
+    ] + mozc_select(
+        linux = [
+            ":ibus_header",
+            "//third_party/ibus",
+        ],
+        oss_linux = [
+            ":ibus_header",
+            "@ibus//:ibus",
+        ],
+    ),
+)
+
+mozc_cc_library(
+    name = "ibus_property_handler",
+    srcs = mozc_select(linux = ["property_handler.cc"]),
+    hdrs = mozc_select(linux = ["property_handler.h"]),
+    deps = [
+        ":ibus_header",
+        ":ibus_utils",
+        ":ibus_wrapper",
+        "//base:const",
+        "//base:file_util",
+        "//base:port",
+        "//base:system_util",
+        "//client",
+        "//protocol:commands_cc_proto",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+    ] + mozc_select(
+        linux = ["//third_party/ibus"],
+        oss_linux = ["@ibus//:ibus"],
+    ),
+)
+
+mozc_cc_library(
+    name = "ibus_utils",
+    srcs = [
+        "message_translator.cc",
+        "path_util.cc",
+    ],
+    hdrs = [
+        "message_translator.h",
+        "path_util.h",
+    ],
+    local_defines = [
+        'MOZC_IBUS_INSTALL_DIR=\\"' + IBUS_MOZC_INSTALL_DIR + '\\"',
+    ],
+    deps = [
+        "//base:util",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_test(
+    name = "ibus_utils_test",
+    size = "small",
+    srcs = [
+        "message_translator_test.cc",
+        "path_util_test.cc",
+    ],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":ibus_utils",
+        "//testing:gunit_main",
+    ],
+)
+
+mozc_cc_library(
+    name = "ibus_mozc_lib",
+    srcs = mozc_select(
+        linux = [
+            "engine_registrar.cc",
+            "ibus_candidate_window_handler.cc",
+            "key_event_handler.cc",
+            "key_translator.cc",
+            "mozc_engine.cc",
+            "preedit_handler.cc",
+            "surrounding_text_util.cc",
+        ],
+    ),
+    hdrs = mozc_select(
+        linux = [
+            "candidate_window_handler_interface.h",
+            "engine_interface.h",
+            "engine_registrar.h",
+            "ibus_candidate_window_handler.h",
+            "key_event_handler.h",
+            "key_translator.h",
+            "mozc_engine.h",
+            "preedit_handler.h",
+            "surrounding_text_util.h",
+        ],
+    ),
+    defines = [
+        "ENABLE_QT_RENDERER",
+    ],
+    deps = [
+        ":candidate_window_handler",
+        ":ibus_config",
+        ":ibus_header",
+        ":ibus_property_handler",
+        ":ibus_utils",
+        ":ibus_wrapper",
+        "//base:clock",
+        "//base:const",
+        "//base:file_util",
+        "//base:port",
+        "//base:singleton",
+        "//base:system_util",
+        "//base:util",
+        "//base:vlog",
+        "//base/container:flat_map",
+        "//client",
+        "//protocol:candidate_window_cc_proto",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//renderer:renderer_client",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+proto_library(
+    name = "ibus_config_proto",
+    srcs = [
+        "ibus_config.proto",
+    ],
+)
+
+cc_proto_library(
+    name = "ibus_config_cc_proto",
+    deps = ["ibus_config_proto"],
+)
+
+mozc_cc_library(
+    name = "ibus_config",
+    srcs = ["ibus_config.cc"],
+    hdrs = [
+        "ibus_config.h",
+        ":gen_main_h",
+    ],
+    copts = ["-Wno-unused-variable"],
+    deps = [
+        ":ibus_config_cc_proto",
+        "//base:file_util",
+        "//base:system_util",
+        "//base/protobuf:text_format",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_test(
+    name = "ibus_config_test",
+    size = "small",
+    srcs = ["ibus_config_test.cc"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":ibus_config",
+        ":ibus_config_cc_proto",
+        "//testing:gunit_main",
+    ],
+)
+
+mozc_cc_binary(
+    name = "ibus_mozc",
+    srcs = mozc_select(
+        default = ["main_stub.cc"],
+        linux = [
+            "main.cc",
+            ":gen_main_h",
+        ],
+    ),
+    data = [
+        ":gen_mozc_xml",
+        "//unix:icons",
+    ],
+    visibility = ["//unix:__subpackages__"],
+    deps = [
+        ":ibus_config",
+        ":ibus_header",
+        ":ibus_mozc_lib",
+        ":ibus_utils",
+        "//base:init_mozc",
+        "//base:version",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_test(
+    name = "ibus_mozc_test",
+    size = "small",
+    srcs = mozc_select(
+        linux = [
+            "key_event_handler_test.cc",
+            "key_translator_test.cc",
+            "mozc_engine_test.cc",
+            "surrounding_text_util_test.cc",
+        ],
+    ),
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":ibus_config",
+        ":ibus_mozc_lib",
+        "//base:clock",
+        "//base:port",
+        "//base:util",
+        "//base/protobuf",
+        "//client:client_mock",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//testing:gunit_main",
+        "//testing:test_peer",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+mozc_cc_library(
+    name = "candidate_window_handler",
+    srcs = mozc_select(linux = ["candidate_window_handler.cc"]),
+    hdrs = mozc_select(
+        linux = [
+            "candidate_window_handler_interface.h",
+            "candidate_window_handler.h",
+        ],
+    ),
+    copts = mozc_select(linux = ["-Ithird_party/glib"]),
+    deps = [
+        ":ibus_header",
+        "//base:coordinates",
+        "//base:port",
+        "//protocol:candidate_window_cc_proto",
+        "//protocol:commands_cc_proto",
+        "//protocol:renderer_cc_proto",
+        "//renderer:renderer_client",
+        "//renderer:renderer_interface",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+    ] + mozc_select(
+        linux = [
+            ":ibus_wrapper",
+            "//third_party/ibus",
+            "//third_party/glib/gio",
+        ],
+        oss_linux = [
+            ":ibus_wrapper",
+            "@ibus//:ibus",
+        ],
+    ),
+)
+
+mozc_cc_test(
+    name = "candidate_window_handler_test",
+    srcs = mozc_select(linux = ["candidate_window_handler_test.cc"]),
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":candidate_window_handler",
+        "//base:coordinates",
+        "//base/protobuf:text_format",
+        "//protocol:candidate_window_cc_proto",
+        "//protocol:commands_cc_proto",
+        "//protocol:renderer_cc_proto",
+        "//renderer:renderer_mock",
+        "//testing:gunit_main",
+    ],
+)

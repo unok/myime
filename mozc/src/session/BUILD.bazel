@@ -1,0 +1,681 @@
+# Copyright 2010-2021, Google Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+#     * Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above
+# copyright notice, this list of conditions and the following disclaimer
+# in the documentation and/or other materials provided with the
+# distribution.
+#     * Neither the name of Google Inc. nor the names of its
+# contributors may be used to endorse or promote products derived from
+# this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+# Visibility:  please choose a more appropriate default for the package,
+# and update any rules that should be different.
+
+load(
+    "//:build_defs.bzl",
+    "mozc_cc_binary",
+    "mozc_cc_library",
+    "mozc_cc_test",
+    "mozc_py_binary",
+    "mozc_select",
+    "mozc_select_enable_session_watchdog",
+    "mozc_select_enable_supplemental_model",
+)
+load("//bazel:run_build_tool.bzl", "mozc_run_build_tool")
+
+package(default_visibility = ["//visibility:private"])
+
+mozc_cc_library(
+    name = "session",
+    srcs = ["session.cc"],
+    hdrs = ["session.h"],
+    visibility = [
+        "//evaluation/candidates_diff_checker:__pkg__",
+    ],
+    deps = [
+        ":ime_context",
+        ":key_event_transformer",
+        ":keymap",
+        "//base:clock",
+        "//base:util",
+        "//composer",
+        "//composer:key_event_util",
+        "//composer:table",
+        "//engine:engine_converter_interface",
+        "//engine:engine_interface",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//transliteration",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+mozc_cc_test(
+    name = "session_test",
+    size = "small",
+    timeout = "moderate",
+    srcs = ["session_test.cc"],
+    shard_count = 8,
+    deps = [
+        ":ime_context",
+        ":keymap",
+        ":session",
+        "//base:vlog",
+        "//base/strings:assign",
+        "//base/strings:unicode",
+        "//composer",
+        "//composer:key_parser",
+        "//composer:table",
+        "//config:config_handler",
+        "//converter:attribute",
+        "//converter:converter_mock",
+        "//converter:segments",
+        "//data_manager/testing:mock_data_manager",
+        "//dictionary:pos_matcher",
+        "//engine",
+        "//engine:engine_converter",
+        "//engine:engine_mock",
+        "//engine:mock_data_engine_factory",
+        "//protocol:candidate_window_cc_proto",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//request:conversion_request",
+        "//request:request_test_util",
+        "//rewriter:transliteration_rewriter",
+        "//testing:gunit_main",
+        "//testing:mozctest",
+        "//testing:test_peer",
+        "//transliteration",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+mozc_cc_test(
+    name = "session_regression_test",
+    size = "small",
+    srcs = [
+        "common.h",
+        "session_regression_test.cc",
+    ],
+    shard_count = 8,
+    deps = [
+        ":ime_context",
+        ":session",
+        ":session_handler",
+        "//composer:key_parser",
+        "//composer:table",
+        "//config:config_handler",
+        "//data_manager/testing:mock_data_manager",
+        "//engine",
+        "//engine:mock_data_engine_factory",
+        "//protocol:candidate_window_cc_proto",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//request:request_test_util",
+        "//testing:gunit_main",
+        "//testing:mozctest",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+mozc_cc_library(
+    name = "session_handler",
+    srcs = [
+        "common.h",
+        "session_handler.cc",
+    ],
+    hdrs = ["session_handler.h"],
+    visibility = [
+        "//android/jni:__pkg__",
+        "//ios:__pkg__",
+    ],
+    deps = [
+        ":keymap",
+        ":session",
+        "//base:clock",
+        "//base:singleton",
+        "//base:stopwatch",
+        "//base:util",
+        "//base:version",
+        "//base:vlog",
+        "//base/protobuf:message",
+        "//composer",
+        "//composer:table",
+        "//config:character_form_manager",
+        "//config:config_handler",
+        "//data_manager",
+        "//engine",
+        "//engine:engine_interface",
+        "//engine:supplemental_model_interface",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//protocol:engine_builder_cc_proto",
+        "//protocol:user_dictionary_storage_cc_proto",
+        "//storage:lru_cache",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ] + mozc_select_enable_session_watchdog([
+        "//base:process",
+        ":session_watch_dog",
+    ]),
+)
+
+mozc_cc_library(
+    name = "session_handler_test_util",
+    testonly = True,
+    srcs = [
+        "common.h",
+        "session_handler_test_util.cc",
+    ],
+    hdrs = ["session_handler_test_util.h"],
+    deps = [
+        ":session_handler",
+        "//base:config_file_stream",
+        "//base:file_util",
+        "//config:character_form_manager",
+        "//config:config_handler",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//testing:mozctest",
+        "@com_google_absl//absl/flags:flag",
+    ],
+)
+
+mozc_cc_test(
+    name = "session_handler_test",
+    size = "small",
+    timeout = "long",
+    srcs = [
+        "common.h",
+        "session_handler_test.cc",
+    ],
+    data = [
+        "//data_manager/oss:mozc.data",
+        "//data_manager/testing:mock_mozc.data",
+    ],
+    deps = [
+        ":keymap",
+        ":session_handler",
+        ":session_handler_test_util",
+        "//base:clock",
+        "//base:clock_mock",
+        "//composer:query",
+        "//config:config_handler",
+        "//data_manager",
+        "//data_manager/testing:mock_data_manager",
+        "//engine",
+        "//engine:engine_interface",
+        "//engine:engine_mock",
+        "//engine:mock_data_engine_factory",
+        "//engine:modules",
+        "//engine:supplemental_model_interface",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//testing:gunit_main",
+        "//testing:mozctest",
+        "//testing:test_peer",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+    ] + mozc_select_enable_supplemental_model([
+        "//supplemental_model:supplemental_model_factory",
+        "//supplemental_model:supplemental_model_registration",
+    ]),
+)
+
+mozc_cc_library(
+    name = "session_server",
+    srcs = [
+        "common.h",
+        "session_server.cc",
+    ],
+    hdrs = ["session_server.h"],
+    tags = ["noandroid"],
+    visibility = ["//server:__pkg__"],
+    deps = [
+        ":session_handler",
+        "//base:vlog",
+        "//engine:engine_factory",
+        "//ipc",
+        "//ipc:named_event",
+        "//protocol:commands_cc_proto",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+mozc_cc_binary(
+    name = "session_client_main",
+    srcs = [
+        "session_client_main.cc",
+    ],
+    copts = ["$(STACK_FRAME_UNLIMITED)"],  # session_client_main.cc
+    tags = ["noandroid"],
+    deps = [
+        ":session",
+        "//base:file_stream",
+        "//base:file_util",
+        "//base:init_mozc",
+        "//base:system_util",
+        "//base:util",
+        "//base/protobuf:message",
+        "//composer:key_parser",
+        "//engine:engine_factory",
+        "//engine:engine_interface",
+        "//protocol:commands_cc_proto",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+mozc_cc_library(
+    name = "session_watch_dog",
+    srcs = ["session_watch_dog.cc"],
+    hdrs = ["session_watch_dog.h"],
+    tags = ["noandroid"],
+    deps = [
+        "//base:clock",
+        "//base:cpu_stats",
+        "//base:system_util",
+        "//base:thread",
+        "//base:vlog",
+        "//client",
+        "//client:client_interface",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_test(
+    name = "session_watch_dog_test",
+    size = "small",
+    srcs = ["session_watch_dog_test.cc"],
+    tags = [
+        "noandroid",
+        "nomac",  # TODO(b/281742982) flaky for mac on forge
+    ],
+    deps = [
+        ":session_watch_dog",
+        "//base:cpu_stats",
+        "//client:client_mock",
+        "//testing:gunit_main",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+mozc_cc_library(
+    name = "key_info_util",
+    srcs = ["key_info_util.cc"],
+    hdrs = ["key_info_util.h"],
+    visibility = [
+        "//client:__pkg__",
+        "//win32/base:__pkg__",
+    ],
+    deps = [
+        ":keymap",
+        "//base:config_file_stream",
+        "//base:util",
+        "//composer:key_event_util",
+        "//composer:key_parser",
+        "//config:config_handler",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_test(
+    name = "key_info_util_test",
+    size = "small",
+    srcs = ["key_info_util_test.cc"],
+    deps = [
+        ":key_info_util",
+        "//composer:key_event_util",
+        "//composer:key_parser",
+        "//config:config_handler",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//testing:gunit_main",
+    ],
+)
+
+mozc_py_binary(
+    name = "gen_session_stress_test_data",
+    srcs = ["gen_session_stress_test_data.py"],
+)
+
+mozc_run_build_tool(
+    name = "session_stress_test_data",
+    srcs = {
+        "--input": [
+            "//data/test/quality_regression_test:oss.tsv",
+        ],
+    },
+    outs = {
+        "--output": "session_stress_test_data.h",
+    },
+    tool = ":gen_session_stress_test_data",
+)
+
+mozc_cc_library(
+    name = "random_keyevents_generator",
+    srcs = [
+        "random_keyevents_generator.cc",
+        ":session_stress_test_data",
+    ],
+    hdrs = ["random_keyevents_generator.h"],
+    deps = [
+        ":keymap",
+        "//base:japanese_util",
+        "//base:util",
+        "//base:vlog",
+        "//composer:key_parser",
+        "//protocol:commands_cc_proto",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/random:distributions",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_test(
+    name = "random_keyevents_generator_test",
+    size = "small",
+    srcs = ["random_keyevents_generator_test.cc"],
+    deps = [
+        ":random_keyevents_generator",
+        "//protocol:commands_cc_proto",
+        "//testing:gunit_main",
+    ],
+)
+
+mozc_cc_test(
+    name = "session_handler_stress_test",
+    size = "small",
+    timeout = "moderate",
+    srcs = [
+        "common.h",
+        "session_handler_stress_test.cc",
+    ],
+    shard_count = 16,
+    tags = ["noandroid"],  # TODO(b/73698251): disabled due to errors
+    deps = [
+        ":random_keyevents_generator",
+        ":session_handler_tool",
+        "//engine:engine_factory",
+        "//protocol:commands_cc_proto",
+        "//request:request_test_util",
+        "//testing:gunit_main",
+        "//testing:mozctest",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log",
+    ],
+)
+
+mozc_cc_library(
+    name = "session_handler_tool",
+    testonly = 1,
+    srcs = ["session_handler_tool.cc"],
+    hdrs = ["session_handler_tool.h"],
+    tags = ["noandroid"],  # TODO(b/73698251): disabled due to errors
+    deps = [
+        ":session_handler",
+        "//base:config_file_stream",
+        "//base:file_util",
+        "//base:number_util",
+        "//base:text_normalizer",
+        "//base:util",
+        "//base/protobuf:descriptor",
+        "//base/protobuf:message",
+        "//base/protobuf:text_format",
+        "//base/strings:assign",
+        "//composer:key_parser",
+        "//config:character_form_manager",
+        "//config:config_handler",
+        "//engine:engine_factory",
+        "//engine:engine_interface",
+        "//protocol:candidate_window_cc_proto",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//request:request_test_util",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_binary(
+    name = "session_handler_main",
+    testonly = 1,
+    srcs = ["session_handler_main.cc"],
+    tags = ["noandroid"],  # TODO(b/73698251): disabled due to errors
+    deps = [
+        ":session_handler_tool",
+        "//base:file_stream",
+        "//base:file_util",
+        "//base:init_mozc",
+        "//base:system_util",
+        "//base/protobuf:message",
+        "//data_manager",
+        "//data_manager/oss:oss_data_manager",
+        "//data_manager/testing:mock_data_manager",
+        "//engine",
+        "//protocol:candidate_window_cc_proto",
+        "//protocol:commands_cc_proto",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ] + mozc_select(
+        default = [
+            "//data_manager/android:android_data_manager",
+            "//data_manager/google:google_data_manager",
+        ],
+        oss = [],
+    ),
+)
+
+mozc_cc_test(
+    name = "session_handler_scenario_test",
+    size = "small",
+    timeout = "moderate",
+    srcs = ["session_handler_scenario_test.cc"],
+    data = [
+        "//data/test/session/scenario:scenario_files",
+    ],
+    shard_count = 8,
+    tags = [
+        "noandroid",  # TODO(b/73698251): disabled due to errors
+    ],
+    deps = [
+        ":session_handler_test_util",
+        ":session_handler_tool",
+        "//base:file_stream",
+        "//base:file_util",
+        "//engine:engine_interface",
+        "//engine:mock_data_engine_factory",
+        "//protocol:commands_cc_proto",
+        "//request:request_test_util",
+        "//testing:gunit_main",
+        "//testing:mozctest",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:reflection",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ] + mozc_select_enable_supplemental_model([
+        "//supplemental_model:supplemental_model_factory",
+        "//supplemental_model:supplemental_model_registration",
+    ]),
+)
+
+mozc_cc_library(
+    name = "ime_context",
+    srcs = ["ime_context.cc"],
+    hdrs = ["ime_context.h"],
+    deps = [
+        ":key_event_transformer",
+        ":keymap",
+        "//composer",
+        "//composer:table",
+        "//config:config_handler",
+        "//engine:engine_converter_interface",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+mozc_cc_library(
+    name = "keymap",
+    srcs = ["keymap.cc"],
+    hdrs = ["keymap.h"],
+    visibility = ["//gui/config_dialog:__pkg__"],
+    deps = [
+        "//base:config_file_stream",
+        "//base:file_stream",
+        "//base:util",
+        "//base/protobuf:repeated_field",
+        "//composer:key_event_util",
+        "//composer:key_parser",
+        "//config:config_handler",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_library(
+    name = "key_event_transformer",
+    srcs = ["key_event_transformer.cc"],
+    hdrs = ["key_event_transformer.h"],
+    deps = [
+        "//base:japanese_util",
+        "//composer:key_event_util",
+        "//config:config_handler",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+mozc_cc_test(
+    name = "ime_context_test",
+    size = "small",
+    timeout = "moderate",
+    srcs = ["ime_context_test.cc"],
+    tags = ["noandroid"],  # TODO(b/73698251): disabled due to errors
+    deps = [
+        ":ime_context",
+        ":keymap",
+        "//composer",
+        "//composer:table",
+        "//config:config_handler",
+        "//converter:converter_interface",
+        "//converter:converter_mock",
+        "//converter:segments",
+        "//engine:engine_converter",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//testing:gunit_main",
+        "//testing:testing_util",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+mozc_cc_test(
+    name = "keymap_test",
+    size = "small",
+    srcs = [
+        "keymap_test.cc",
+    ],
+    deps = [
+        ":keymap",
+        "//base:config_file_stream",
+        "//composer:key_parser",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//testing:gunit_main",
+        "//testing:mozctest",
+        "//testing:test_peer",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+mozc_cc_test(
+    name = "key_event_transformer_test",
+    size = "small",
+    srcs = ["key_event_transformer_test.cc"],
+    tags = ["noandroid"],  # TODO(b/73698251): disabled due to errors
+    deps = [
+        ":key_event_transformer",
+        "//base:singleton",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//testing:gunit_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
