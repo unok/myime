@@ -1,0 +1,9 @@
+prefix=../..
+libdir=${prefix}/lib/windows  
+includedir=${prefix}/Sources/llama.cpp/include
+
+Name: llama.cpp
+Description: LLaMA C++ library
+Version: 1.0
+Libs: -L${libdir} -lllama -lggml -lggml-base -lggml-cpu
+Cflags: -I${includedir}

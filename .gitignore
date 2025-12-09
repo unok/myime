@@ -1,0 +1,25 @@
+.build
+DerivedData
+/.previous-build
+xcuserdata
+.DS_Store
+*~
+\#*
+.\#*
+.*.sw[nop]
+*.xcscmblueprint
+/default.profraw
+*.xcodeproj
+Utilities/Docker/*.tar.gz
+.swiftpm
+Package.resolved
+/build
+*.pyc
+.docc-build
+.vscode
+*.gguf
+*.dll
+*.lib
+# But include Windows prebuilt libraries
+!lib/windows/*.dll
+!lib/windows/*.lib
