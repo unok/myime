@@ -279,6 +279,50 @@ public struct Rect
     public int Bottom;
 }
 
+// ITfContextComposition
+[ComImport]
+[Guid("D40C8AAE-AC92-4FC7-9A11-0EE0E23AA39B")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface ITfContextComposition
+{
+    void StartComposition(uint editCookie, ITfRange range, ITfCompositionSink sink, out ITfComposition composition);
+    void EnumCompositions(out object enumCompositions);
+    void FindComposition(uint editCookie, ITfRange testRange, out object enumCompositions);
+    void TakeOwnership(uint editCookie, ITfComposition composition, ITfCompositionSink sink, out ITfComposition newComposition);
+}
+
+// ITfComposition
+[ComImport]
+[Guid("20168D64-5A8F-4A5A-B7BD-CFA29F4D0FD9")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface ITfComposition
+{
+    void GetRange(out ITfRange range);
+    void ShiftStart(uint editCookie, ITfRange newStart);
+    void ShiftEnd(uint editCookie, ITfRange newEnd);
+    void EndComposition(uint editCookie);
+}
+
+// ITfCompositionSink
+[ComImport]
+[Guid("A781718C-579A-4B15-A280-32B8577ACC5E")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface ITfCompositionSink
+{
+    [PreserveSig]
+    int OnCompositionTerminated(uint editCookie, ITfComposition composition);
+}
+
+// ITfInsertAtSelection
+[ComImport]
+[Guid("55CE16BA-3014-41C1-9CEB-FADE1446AC6C")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface ITfInsertAtSelection
+{
+    void InsertTextAtSelection(uint editCookie, uint flags, [In] char[] text, int len, out ITfRange range);
+    void InsertEmbeddedAtSelection(uint editCookie, uint flags, object dataObject, out ITfRange range);
+}
+
 // Constants
 public static class TsfConstants
 {
@@ -288,4 +332,8 @@ public static class TsfConstants
     public const uint TF_ES_READ = 0x2;
     public const uint TF_ES_READWRITE = 0x6;
     public const uint TF_ES_ASYNC = 0x8;
+
+    public const uint TF_IAS_NOQUERY = 0x1;
+    public const uint TF_IAS_QUERYONLY = 0x2;
+    public const uint TF_IAS_NO_DEFAULT_COMPOSITION = 0x80000000;
 }

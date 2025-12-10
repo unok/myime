@@ -12,7 +12,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(path: "../AzooKeyKanaKanjiConverter-local"),
+        .package(path: "../AzooKeyKanaKanjiConverter"),
     ],
     targets: [
         .target(
@@ -25,12 +25,13 @@ let package = Package(
         .target(
             name: "azookey-engine",
             dependencies: [
-                .product(name: "KanaKanjiConverterModule", package: "AzooKeyKanaKanjiConverter-local"),
+                .product(name: "KanaKanjiConverterModuleWithDefaultDictionary", package: "AzooKeyKanaKanjiConverter"),
                 "ffi"
             ],
             path: "Sources/azookey-engine",
             swiftSettings: [
-                .enableExperimentalFeature("Extern")
+                .enableExperimentalFeature("Extern"),
+                .interoperabilityMode(.Cxx)
             ]
         ),
     ]

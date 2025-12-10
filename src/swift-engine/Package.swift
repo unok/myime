@@ -12,7 +12,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(path: "../AzooKeyKanaKanjiConverter-local", traits: ["Zenzai"]),
+        .package(path: "../AzooKeyKanaKanjiConverter"),
     ],
     targets: [
         .target(
@@ -25,21 +25,13 @@ let package = Package(
         .target(
             name: "azookey-engine",
             dependencies: [
-                .product(name: "KanaKanjiConverterModuleWithDefaultDictionary", package: "AzooKeyKanaKanjiConverter-local"),
+                .product(name: "KanaKanjiConverterModuleWithDefaultDictionary", package: "AzooKeyKanaKanjiConverter"),
                 "ffi"
             ],
             path: "Sources/azookey-engine",
             swiftSettings: [
                 .enableExperimentalFeature("Extern"),
                 .interoperabilityMode(.Cxx)
-            ],
-            linkerSettings: [
-                .linkedLibrary("llama"),
-                .linkedLibrary("ggml"),
-                .linkedLibrary("ggml-base"),
-                .linkedLibrary("ggml-cpu"),
-                .linkedLibrary("ggml-vulkan"),
-                .unsafeFlags(["-LC:/Users/unok/git/myime/src/AzooKeyKanaKanjiConverter-local/lib/windows"])
             ]
         ),
     ]

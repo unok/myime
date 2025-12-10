@@ -43,6 +43,9 @@ Thumbs.db
 config.json
 userdata/
 
-# Local dependencies with patches
-src/AzooKeyKanaKanjiConverter-local/
-src/swift-tokenizers/
+# Old local directories (now using subtrees)
+# src/AzooKeyKanaKanjiConverter-local/  # Replaced by src/AzooKeyKanaKanjiConverter
+# src/swift-tokenizers/  # Now a subtree
+
+# MSI installers
+*.msi

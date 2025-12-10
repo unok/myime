@@ -10,7 +10,7 @@ namespace MyIme.Tsf;
 [ComVisible(true)]
 [Guid(Guids.TextService)]
 [ClassInterface(ClassInterfaceType.None)]
-public sealed class TextService : ITfTextInputProcessorEx, ITfKeyEventSink, ITfThreadMgrEventSink, IDisposable
+public sealed class TextService : ITfTextInputProcessorEx, ITfKeyEventSink, ITfThreadMgrEventSink, ITfCompositionSink, IDisposable
 {
     private ITfThreadMgr? _threadMgr;
     private uint _clientId;
@@ -20,10 +20,32 @@ public sealed class TextService : ITfTextInputProcessorEx, ITfKeyEventSink, ITfT
     private bool _disposed;
 
     private ComposingState _composingState = new();
+    private ITfComposition? _composition;
 
     public TextService()
     {
-        _converter = new KanaKanjiConverter();
+        _converter = new KanaKanjiConverter(new ConverterConfig
+        {
+            ConfigPath = FindConfigFile(),
+            ZenzaiEnabled = true,
+            ZenzaiInferenceLimit = 10
+        });
+    }
+
+    private static string? FindConfigFile()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.json"),
+            @"C:\Users\unok\git\myime\config.json"
+        };
+
+        foreach (var path in candidates)
+        {
+            if (File.Exists(path))
+                return path;
+        }
+        return null;
     }
 
     #region ITfTextInputProcessor
@@ -131,6 +153,19 @@ public sealed class TextService : ITfTextInputProcessorEx, ITfKeyEventSink, ITfT
 
     #endregion
 
+    #region ITfCompositionSink
+
+    public int OnCompositionTerminated(uint editCookie, ITfComposition composition)
+    {
+        // Composition was terminated externally
+        _composition = null;
+        _composingState.Reset();
+        _converter?.ClearText();
+        return 0;
+    }
+
+    #endregion
+
     #region Key Handling
 
     private bool ShouldEatKey(int vKey)
@@ -173,6 +208,7 @@ public sealed class TextService : ITfTextInputProcessorEx, ITfKeyEventSink, ITfT
                 ch = char.ToLower(ch);
                 _converter.AppendText(ch.ToString());
                 _composingState.IsComposing = true;
+                _composingState.RomajiBuffer += ch;
                 UpdateComposition(context);
                 return true;
 
@@ -181,7 +217,18 @@ public sealed class TextService : ITfTextInputProcessorEx, ITfKeyEventSink, ITfT
                 if (_composingState.IsComposing)
                 {
                     _converter.RemoveText(1);
-                    UpdateComposition(context);
+                    if (_composingState.RomajiBuffer.Length > 0)
+                    {
+                        _composingState.RomajiBuffer = _composingState.RomajiBuffer[..^1];
+                    }
+                    if (string.IsNullOrEmpty(_composingState.RomajiBuffer))
+                    {
+                        CancelComposition(context);
+                    }
+                    else
+                    {
+                        UpdateComposition(context);
+                    }
                     return true;
                 }
                 return false;
@@ -199,7 +246,7 @@ public sealed class TextService : ITfTextInputProcessorEx, ITfKeyEventSink, ITfT
             case 0x1B:
                 if (_composingState.IsComposing)
                 {
-                    CancelComposition();
+                    CancelComposition(context);
                     return true;
                 }
                 return false;
@@ -269,22 +316,37 @@ public sealed class TextService : ITfTextInputProcessorEx, ITfKeyEventSink, ITfT
 
         if (!string.IsNullOrEmpty(text))
         {
-            var editSession = new CommitEditSession(context, text);
+            var editSession = new CommitEditSession(this, context, text);
             context.RequestEditSession(_clientId, editSession, TsfConstants.TF_ES_READWRITE | TsfConstants.TF_ES_SYNC, out _);
         }
 
         // Reset state
         _converter?.ClearText();
         _composingState.Reset();
+        _composition = null;
     }
 
-    private void CancelComposition()
+    private void CancelComposition(ITfContext context)
     {
+        if (_composition != null)
+        {
+            var editSession = new EndCompositionEditSession(context, _composition);
+            context.RequestEditSession(_clientId, editSession, TsfConstants.TF_ES_READWRITE | TsfConstants.TF_ES_SYNC, out _);
+            _composition = null;
+        }
+
         _converter?.ClearText();
         _composingState.Reset();
     }
 
     #endregion
+
+    internal uint ClientId => _clientId;
+    internal ITfComposition? Composition
+    {
+        get => _composition;
+        set => _composition = value;
+    }
 
     public void Dispose()
     {
@@ -302,6 +364,7 @@ public sealed class TextService : ITfTextInputProcessorEx, ITfKeyEventSink, ITfT
 internal class ComposingState
 {
     public bool IsComposing { get; set; }
+    public string RomajiBuffer { get; set; } = "";
     public IReadOnlyList<string>? Candidates { get; set; }
     public int SelectedCandidateIndex { get; set; }
     public bool HasCandidates => Candidates != null && Candidates.Count > 0;
@@ -309,6 +372,7 @@ internal class ComposingState
     public void Reset()
     {
         IsComposing = false;
+        RomajiBuffer = "";
         Candidates = null;
         SelectedCandidateIndex = 0;
     }
@@ -334,13 +398,47 @@ internal class CompositionEditSession : ITfEditSession
 
     public int DoEditSession(uint editCookie)
     {
-        // Get composition text
-        var composedText = _state.HasCandidates
-            ? _state.Candidates![_state.SelectedCandidateIndex]
-            : _converter.GetComposedText();
+        try
+        {
+            // Get composition text
+            var composedText = _state.HasCandidates
+                ? _state.Candidates![_state.SelectedCandidateIndex]
+                : _converter.GetComposedText() ?? _state.RomajiBuffer;
 
-        // Update composition display
-        // TODO: Implement composition display update
+            if (string.IsNullOrEmpty(composedText))
+                return 0;
+
+            // Get or create composition
+            if (_textService.Composition == null)
+            {
+                // Start a new composition
+                if (_context is ITfInsertAtSelection insertAtSel)
+                {
+                    insertAtSel.InsertTextAtSelection(editCookie, TsfConstants.TF_IAS_QUERYONLY, null!, 0, out var range);
+
+                    if (range != null && _context is ITfContextComposition contextComp)
+                    {
+                        contextComp.StartComposition(editCookie, range, _textService, out var composition);
+                        _textService.Composition = composition;
+                    }
+                }
+            }
+
+            // Update composition text
+            if (_textService.Composition != null)
+            {
+                _textService.Composition.GetRange(out var range);
+                if (range != null)
+                {
+                    var textChars = composedText.ToCharArray();
+                    range.SetText(editCookie, 0, textChars, textChars.Length);
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors during composition update
+        }
 
         return 0; // S_OK
     }
@@ -351,25 +449,85 @@ internal class CompositionEditSession : ITfEditSession
 /// </summary>
 internal class CommitEditSession : ITfEditSession
 {
+    private readonly TextService _textService;
     private readonly ITfContext _context;
     private readonly string _text;
 
-    public CommitEditSession(ITfContext context, string text)
+    public CommitEditSession(TextService textService, ITfContext context, string text)
     {
+        _textService = textService;
         _context = context;
         _text = text;
     }
 
     public int DoEditSession(uint editCookie)
     {
-        // Get selection
-        var selection = new TfSelection[1];
-        _context.GetSelection(editCookie, 0, 1, selection, out var fetched);
-
-        if (fetched > 0 && selection[0].Range != null)
+        try
         {
-            // Set the text
-            selection[0].Range.SetText(editCookie, 0, _text.ToCharArray(), _text.Length);
+            if (_textService.Composition != null)
+            {
+                // Get the composition range and set final text
+                _textService.Composition.GetRange(out var range);
+                if (range != null)
+                {
+                    var textChars = _text.ToCharArray();
+                    range.SetText(editCookie, 0, textChars, textChars.Length);
+                }
+
+                // End the composition
+                _textService.Composition.EndComposition(editCookie);
+                _textService.Composition = null;
+            }
+            else
+            {
+                // No composition, insert at selection
+                if (_context is ITfInsertAtSelection insertAtSel)
+                {
+                    var textChars = _text.ToCharArray();
+                    insertAtSel.InsertTextAtSelection(editCookie, 0, textChars, textChars.Length, out _);
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors during commit
+        }
+
+        return 0; // S_OK
+    }
+}
+
+/// <summary>
+/// Edit session for ending composition without committing
+/// </summary>
+internal class EndCompositionEditSession : ITfEditSession
+{
+    private readonly ITfContext _context;
+    private readonly ITfComposition _composition;
+
+    public EndCompositionEditSession(ITfContext context, ITfComposition composition)
+    {
+        _context = context;
+        _composition = composition;
+    }
+
+    public int DoEditSession(uint editCookie)
+    {
+        try
+        {
+            // Clear the composition text
+            _composition.GetRange(out var range);
+            if (range != null)
+            {
+                range.SetText(editCookie, 0, Array.Empty<char>(), 0);
+            }
+
+            // End the composition
+            _composition.EndComposition(editCookie);
+        }
+        catch
+        {
+            // Ignore errors
         }
 
         return 0; // S_OK
