@@ -7,3 +7,4 @@
 [submodule "mozc"]
 	path = mozc
 	url = https://github.com/unok/mozc.git
+	branch = patch-myime
