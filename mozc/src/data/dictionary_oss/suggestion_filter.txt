@@ -1,3 +1,0 @@
-# suggestion_filter.txt:
-# A set of word which won't be shown in suggestion/prediction
-ただしイケメンに限る

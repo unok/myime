@@ -1,6 +1,0 @@
-BasedOnStyle: Google
-
----
-Language: Cpp
-PointerAlignment: Left
-QualifierAlignment: Left

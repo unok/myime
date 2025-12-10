@@ -4,3 +4,6 @@
 [submodule "dictionaries/azooKey_emoji_dictionary_storage"]
 	path = dictionaries/azooKey_emoji_dictionary_storage
 	url = https://github.com/azooKey/azooKey_emoji_dictionary_storage.git
+[submodule "mozc"]
+	path = mozc
+	url = https://github.com/unok/mozc.git

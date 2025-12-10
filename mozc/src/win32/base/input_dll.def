@@ -1,8 +1,0 @@
-LIBRARY input.dll
-
-EXPORTS
-        EnumEnabledLayoutOrTip
-        EnumLayoutOrTipForSetup
-        InstallLayoutOrTip
-        InstallLayoutOrTipUserReg
-        SetDefaultLayoutOrTip

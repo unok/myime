@@ -1,6 +1,0 @@
-LIBRARY msctf.dll
-
-EXPORTS
-        TF_CreateCategoryMgr
-        TF_CreateInputProcessorProfiles
-        TF_CreateLangBarItemMgr

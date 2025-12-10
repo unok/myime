@@ -1,4 +1,0 @@
-/* Localized versions of Info.plist keys */
-
-CFBundleName = "Dictionary Tool";
-NSHumanReadableCopyright = "Copyright 2025 Google LLC";
