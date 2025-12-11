@@ -184,7 +184,33 @@ jobs:
         shell: pwsh
         run: |
           cd src/swift-engine
-          swift build -c release
+          $maxRetries = 10
+          $retryCount = 0
+          $success = $false
+
+          while (-not $success -and $retryCount -lt $maxRetries) {
+            $retryCount++
+            Write-Host "Attempt $retryCount of $maxRetries..."
+
+            try {
+              swift build -c release
+              if ($LASTEXITCODE -eq 0) {
+                $success = $true
+                Write-Host "Build succeeded on attempt $retryCount"
+              } else {
+                Write-Host "Build failed with exit code $LASTEXITCODE, retrying..."
+                Start-Sleep -Seconds 5
+              }
+            } catch {
+              Write-Host "Build threw exception: $_"
+              Start-Sleep -Seconds 5
+            }
+          }
+
+          if (-not $success) {
+            Write-Host "Build failed after $maxRetries attempts"
+            exit 1
+          }
 
       - name: Collect artifacts
         shell: pwsh
