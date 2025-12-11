@@ -375,7 +375,7 @@ python build_tools\update_deps.py --noqt --nollvm --nomsys2 --nondk --nosubmodul
 
 :: Build MSI installer with Bazel (x64)
 echo.
-echo Building x64 MSI installer with Bazel (this may take several minutes)...
+echo Building X64 MSI installer with Bazel (this may take several minutes)...
 bazelisk build --config=oss_windows //win32/installer:installer_x64
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Bazel x64 build failed
@@ -383,12 +383,12 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-:: Copy x64 MSI to root
-set "MSI_PATH_X64=%MOZC_SRC%\bazel-bin\win32\installer\Mozc_x64.msi"
+:: Copy X64 MSI to root
+set "MSI_PATH_X64=%MOZC_SRC%\bazel-bin\win32\installer\Mozc_X64.msi"
 if exist "%MSI_PATH_X64%" (
-    copy /y "%MSI_PATH_X64%" "%ROOT_DIR%Mozc_x64.msi" >nul
+    copy /y "%MSI_PATH_X64%" "%ROOT_DIR%Mozc_X64.msi" >nul
     echo.
-    echo x64 MSI installer created: %ROOT_DIR%Mozc_x64.msi
+    echo X64 MSI installer created: %ROOT_DIR%Mozc_X64.msi
 )
 
 :: Build ARM64 MSI installer (if ARM64 build enabled)
@@ -421,7 +421,7 @@ echo   x64 DLL: %OUTPUT_DIR%\azookey-engine.dll
 if "%BUILD_ARM64%"=="1" (
     echo   ARM64 DLL: %OUTPUT_DIR_ARM64%\azookey-engine.dll
 )
-echo   x64 MSI: %ROOT_DIR%Mozc_x64.msi
+echo   X64 MSI: %ROOT_DIR%Mozc_X64.msi
 if "%BUILD_ARM64%"=="1" (
     if exist "%ROOT_DIR%Mozc_ARM64.msi" (
         echo   ARM64 MSI: %ROOT_DIR%Mozc_ARM64.msi
@@ -430,7 +430,7 @@ if "%BUILD_ARM64%"=="1" (
 echo.
 echo To install the IME:
 echo   1. Uninstall any existing Mozc/MyIME
-echo   2. Run Mozc_x64.msi as administrator
+echo   2. Run Mozc_X64.msi or Mozc_ARM64.msi as administrator
 echo   3. Restart your computer
 echo.
 
