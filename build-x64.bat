@@ -2,17 +2,13 @@
 setlocal EnableDelayedExpansion
 
 :: ==============================================
-:: MyIME Build Script (Bazel version)
+:: MyIME Build Script - x64
 :: ==============================================
-:: This script builds the entire project from scratch:
+:: This script builds the x64 version:
 :: 1. Check dependencies
 :: 2. Build Swift DLL
 :: 3. Copy llama.cpp dependencies
 :: 4. Build Mozc with Bazel (includes MSI installer)
-::
-:: Usage:
-::   build.bat              - Build x64 and ARM64
-::   build.bat --no-arm64   - Build x64 only (skip ARM64)
 :: ==============================================
 
 set "ROOT_DIR=%~dp0"
@@ -20,22 +16,10 @@ set "SWIFT_DIR=%ROOT_DIR%src\swift-engine"
 set "MOZC_SRC=%ROOT_DIR%mozc\src"
 set "BUILD_DIR=%ROOT_DIR%build"
 set "OUTPUT_DIR=%BUILD_DIR%\x64\release"
-set "OUTPUT_DIR_ARM64=%BUILD_DIR%\arm64\release"
-
-:: Parse command line arguments
-set "BUILD_ARM64=1"
-for %%a in (%*) do (
-    if /i "%%a"=="--no-arm64" set "BUILD_ARM64=0"
-)
 
 echo ==============================================
-echo MyIME Build Script (Bazel)
+echo MyIME Build Script - x64
 echo ==============================================
-if "%BUILD_ARM64%"=="1" (
-    echo Build targets: x64 + ARM64
-) else (
-    echo Build targets: x64 only
-)
 echo.
 
 :: ==============================================
@@ -82,31 +66,11 @@ if not exist "%VSWHERE%" (
         )
 
         if defined MSVC_PATH (
-            :: Check x64 compiler
             if exist "!MSVC_PATH!\bin\Hostx64\x64\cl.exe" (
                 echo   [OK] x64 compiler found
             ) else (
                 echo   [ERROR] x64 compiler not found
-                echo   Please install "MSVC v143 - VS 2022 C++ x64/x86 build tools" via Visual Studio Installer
                 set "DEPS_OK=0"
-            )
-
-            :: Check ARM64 cross-compiler (if ARM64 build enabled)
-            if "!BUILD_ARM64!"=="1" (
-                if exist "!MSVC_PATH!\bin\Hostx64\arm64\cl.exe" (
-                    echo   [OK] ARM64 cross-compiler found
-                ) else (
-                    echo   [ERROR] ARM64 cross-compiler not found
-                    echo   Please install "MSVC v143 - VS 2022 C++ ARM64 build tools" via Visual Studio Installer:
-                    echo     1. Open Visual Studio Installer
-                    echo     2. Click "Modify" on VS 2022
-                    echo     3. Go to "Individual components" tab
-                    echo     4. Search for "ARM64"
-                    echo     5. Check "MSVC v143 - VS 2022 C++ ARM64 build tools ^(Latest^)"
-                    echo     6. Click "Modify" to install
-                    echo   Or run with --no-arm64 to skip ARM64 build
-                    set "DEPS_OK=0"
-                )
             )
         ) else (
             echo   [ERROR] MSVC tools not found
@@ -124,7 +88,6 @@ echo Checking Python...
 where python >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo   [ERROR] Python not found in PATH
-    echo   Please install Python 3.x
     set "DEPS_OK=0"
 ) else (
     for /f "tokens=*" %%v in ('python --version 2^>^&1') do (
@@ -138,9 +101,6 @@ echo Checking Bazelisk...
 where bazelisk >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo   [ERROR] Bazelisk not found in PATH
-    echo   Please install Bazelisk from:
-    echo   https://github.com/bazelbuild/bazelisk/releases
-    echo   Or via: choco install bazelisk
     set "DEPS_OK=0"
 ) else (
     echo   [OK] Bazelisk found
@@ -184,11 +144,10 @@ if defined SWIFT_RUNTIME_FOUND (
     echo   [OK] Swift Runtime found at: %SWIFT_RUNTIME_FOUND%
 ) else (
     echo   [ERROR] Swift Runtime DLLs not found
-    echo   Please ensure Swift is properly installed with runtime libraries
     set "DEPS_OK=0"
 )
 
-:: Check llama.cpp dependencies for Zenzai (x64)
+:: Check llama.cpp dependencies
 echo.
 echo Checking llama.cpp dependencies...
 set "LLAMA_BUILD=%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows"
@@ -196,27 +155,6 @@ if exist "%LLAMA_BUILD%\ggml.dll" (
     echo   [OK] llama.cpp x64 DLLs found
 ) else (
     echo   [WARNING] llama.cpp x64 DLLs not found at %LLAMA_BUILD%
-    echo   Zenzai AI acceleration will not work without these.
-)
-
-:: Check llama.cpp dependencies for ARM64 (if ARM64 build enabled)
-if "%BUILD_ARM64%"=="1" (
-    set "LLAMA_BUILD_ARM64=%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows-arm64"
-    if exist "!LLAMA_BUILD_ARM64!\ggml.dll" (
-        echo   [OK] llama.cpp ARM64 DLLs found
-    ) else (
-        echo   [WARNING] llama.cpp ARM64 DLLs not found at !LLAMA_BUILD_ARM64!
-        echo   Run build-llama-arm64.bat to build ARM64 llama.cpp DLLs.
-    )
-)
-
-:: Check Qt for Bazel
-echo.
-echo Checking Qt for Bazel...
-if exist "%MOZC_SRC%\third_party\qt\bin\Qt6Core.dll" (
-    echo   [OK] Qt found in third_party/qt
-) else (
-    echo   [INFO] Qt not found, will be built via build_qt.py
 )
 
 :: Summary
@@ -247,12 +185,6 @@ call "%VS_PATH%\VC\Auxiliary\Build\vcvarsall.bat" x64 >nul 2>&1
 :: Change to Swift directory
 pushd "%SWIFT_DIR%"
 
-:: Use local package configuration (with patched AzooKey)
-if exist "Package-local.swift" (
-    echo Using Package-local.swift...
-    copy /y Package-local.swift Package.swift >nul
-)
-
 :: Build Swift package
 echo Building Swift package (this may take a few minutes)...
 swift build -c release --arch x86_64
@@ -274,7 +206,6 @@ copy /y "%SWIFT_DLL%" "%OUTPUT_DIR%\azookey-engine.dll" >nul
 echo Copied: azookey-engine.dll
 
 :: Copy Swift runtime libraries
-:: Note: Swift Runtime DLLs are in "Runtimes" directory, NOT "Toolchains"
 set "SWIFT_RUNTIME="
 for %%p in ("%LocalAppData%\Programs\Swift\Runtimes" "%ProgramFiles%\Swift\Runtimes" "%SystemDrive%\Library\Swift\Runtimes") do (
     if exist "%%~p" (
@@ -308,9 +239,6 @@ if defined SWIFT_RUNTIME (
 popd
 
 echo Swift x64 DLL build completed.
-
-:: Build ARM64 Swift DLL (if ARM64 build enabled)
-if "%BUILD_ARM64%"=="1" call :build_swift_arm64
 echo.
 
 :: ==============================================
@@ -330,22 +258,6 @@ if exist "%LLAMA_BUILD%" (
     )
 ) else (
     echo [WARNING] llama.cpp x64 build directory not found
-)
-
-:: Copy ARM64 llama.cpp DLLs (if ARM64 build enabled)
-if "%BUILD_ARM64%"=="1" (
-    set "LLAMA_BUILD_ARM64=%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows-arm64"
-    if exist "!LLAMA_BUILD_ARM64!" (
-        echo Copying ARM64 llama.cpp DLLs...
-        for %%f in (ggml.dll ggml-base.dll ggml-cpu.dll llama.dll) do (
-            if exist "!LLAMA_BUILD_ARM64!\%%f" (
-                copy /y "!LLAMA_BUILD_ARM64!\%%f" "%OUTPUT_DIR_ARM64%\" >nul
-                echo   Copied: %%f ^(ARM64^)
-            )
-        )
-    ) else (
-        echo [WARNING] llama.cpp ARM64 build directory not found
-    )
 )
 
 echo.
@@ -369,13 +281,13 @@ if not exist "third_party\qt\bin\Qt6Core.dll" (
     )
 )
 
-:: Run update_deps.py if needed (for WiX dotnet tool, etc.)
+:: Run update_deps.py if needed
 echo Checking dependencies...
 python build_tools\update_deps.py --noqt --nollvm --nomsys2 --nondk --nosubmodules
 
-:: Build MSI installer with Bazel (x64)
+:: Build MSI installer with Bazel
 echo.
-echo Building X64 MSI installer with Bazel (this may take several minutes)...
+echo Building x64 MSI installer with Bazel (this may take several minutes)...
 bazelisk build --config=oss_windows //win32/installer:installer_x64
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Bazel x64 build failed
@@ -383,30 +295,12 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-:: Copy X64 MSI to root
-set "MSI_PATH_X64=%MOZC_SRC%\bazel-bin\win32\installer\Mozc_X64.msi"
-if exist "%MSI_PATH_X64%" (
-    copy /y "%MSI_PATH_X64%" "%ROOT_DIR%Mozc_X64.msi" >nul
+:: Copy MSI to root
+set "MSI_PATH=%MOZC_SRC%\bazel-bin\win32\installer\Mozc_X64.msi"
+if exist "%MSI_PATH%" (
+    copy /y "%MSI_PATH%" "%ROOT_DIR%Mozc_X64.msi" >nul
     echo.
-    echo X64 MSI installer created: %ROOT_DIR%Mozc_X64.msi
-)
-
-:: Build ARM64 MSI installer (if ARM64 build enabled)
-if "%BUILD_ARM64%"=="1" (
-    echo.
-    echo Building ARM64 MSI installer with Bazel...
-    bazelisk build --config=oss_windows //win32/installer:installer_arm64
-    if !ERRORLEVEL! NEQ 0 (
-        echo [WARNING] Bazel ARM64 build failed - ARM64 MSI will not be available
-        echo ARM64 DLLs are still available in: %OUTPUT_DIR_ARM64%
-    ) else (
-        set "MSI_PATH_ARM64=%MOZC_SRC%\bazel-bin\win32\installer\Mozc_ARM64.msi"
-        if exist "!MSI_PATH_ARM64!" (
-            copy /y "!MSI_PATH_ARM64!" "%ROOT_DIR%Mozc_ARM64.msi" >nul
-            echo.
-            echo ARM64 MSI installer created: %ROOT_DIR%Mozc_ARM64.msi
-        )
-    )
+    echo x64 MSI installer created: %ROOT_DIR%Mozc_X64.msi
 )
 
 popd
@@ -417,79 +311,14 @@ echo Build completed successfully!
 echo ==============================================
 echo.
 echo Output files:
-echo   x64 DLL: %OUTPUT_DIR%\azookey-engine.dll
-if "%BUILD_ARM64%"=="1" (
-    echo   ARM64 DLL: %OUTPUT_DIR_ARM64%\azookey-engine.dll
-)
-echo   X64 MSI: %ROOT_DIR%Mozc_X64.msi
-if "%BUILD_ARM64%"=="1" (
-    if exist "%ROOT_DIR%Mozc_ARM64.msi" (
-        echo   ARM64 MSI: %ROOT_DIR%Mozc_ARM64.msi
-    )
-)
+echo   DLL: %OUTPUT_DIR%\azookey-engine.dll
+echo   MSI: %ROOT_DIR%Mozc_X64.msi
 echo.
 echo To install the IME:
 echo   1. Uninstall any existing Mozc/MyIME
-echo   2. Run Mozc_X64.msi or Mozc_ARM64.msi as administrator
+echo   2. Run Mozc_X64.msi as administrator
 echo   3. Restart your computer
 echo.
 
 endlocal
 exit /b 0
-
-:: ==============================================
-:: Subroutine: Build Swift ARM64 DLL
-:: ==============================================
-:build_swift_arm64
-setlocal EnableDelayedExpansion
-echo.
-echo Building Swift ARM64 DLL...
-
-:: Create ARM64 output directory
-if not exist "%OUTPUT_DIR_ARM64%" mkdir "%OUTPUT_DIR_ARM64%"
-
-:: Setup ARM64 Visual Studio environment for cross-compilation (in a new process)
-echo Setting up ARM64 cross-compilation environment...
-
-:: Change to Swift directory
-pushd "%SWIFT_DIR%"
-
-:: Build Swift package for ARM64 using cmd /c to isolate environment
-echo Building Swift package for ARM64 (this may take a few minutes)...
-cmd /c "call "%VS_PATH%\VC\Auxiliary\Build\vcvarsall.bat" x64_arm64 >nul 2>&1 && swift build -c release --triple aarch64-unknown-windows-msvc"
-if !ERRORLEVEL! NEQ 0 (
-    echo [WARNING] Swift ARM64 build failed - ARM64 MSI will not include Swift DLL
-    popd
-    endlocal
-    goto :eof
-)
-
-:: Copy DLL to ARM64 output directory
-:: Note: Cross-compilation outputs to .build\aarch64-unknown-windows-msvc\release
-set "SWIFT_DLL_ARM64=%SWIFT_DIR%\.build\aarch64-unknown-windows-msvc\release\azookey-engine.dll"
-if not exist "!SWIFT_DLL_ARM64!" (
-    :: Try alternate path for native ARM64 build
-    set "SWIFT_DLL_ARM64=%SWIFT_DIR%\.build\release\azookey-engine.dll"
-)
-if not exist "!SWIFT_DLL_ARM64!" (
-    echo [WARNING] ARM64 azookey-engine.dll not found in build output
-    echo   Tried: %SWIFT_DIR%\.build\aarch64-unknown-windows-msvc\release\azookey-engine.dll
-    echo   Tried: %SWIFT_DIR%\.build\release\azookey-engine.dll
-    popd
-    endlocal
-    goto :eof
-)
-
-copy /y "!SWIFT_DLL_ARM64!" "%OUTPUT_DIR_ARM64%\azookey-engine.dll" >nul
-echo Copied: azookey-engine.dll (ARM64)
-
-:: Note: Swift Runtime DLLs for ARM64 need to be obtained separately
-:: The x64 runtime DLLs are not compatible with ARM64
-echo [INFO] Swift ARM64 runtime DLLs need to be obtained from ARM64 Swift installation
-echo        Skipping Swift runtime copy for ARM64
-
-popd
-endlocal
-echo Swift ARM64 DLL build completed.
-goto :eof
-

@@ -16,12 +16,15 @@ Windows向け日本語IME。MozcのUIフレームワークとAzooKeyのかな漢
 
 ### ビルドコマンド
 ```batch
-# フルビルド（Swift DLL + Mozc MSI）
-build.bat
+# x64ビルド（Swift DLL + Mozc MSI）
+build-x64.bat
+
+# arm64ビルド（Swift DLL + Mozc MSI）
+build-arm64.bat
 
 # クリーンビルド
 clean.bat
-build.bat
+build-x64.bat
 
 # Mozcのみビルド
 build-mozc.bat
@@ -31,8 +34,10 @@ restart-ime.bat
 ```
 
 ### ビルド成果物
-- `Mozc64.msi` - インストーラ
-- `build\x64\release\` - DLLファイル群
+- `Mozc_X64.msi` - x64インストーラ
+- `Mozc_ARM64.msi` - arm64インストーラ
+- `build\x64\release\` - x64 DLLファイル群
+- `build\arm64\release\` - arm64 DLLファイル群
 
 ## アーキテクチャ
 
@@ -65,9 +70,11 @@ myime/
 │   │   └── Sources/
 │   ├── AzooKeyKanaKanjiConverter/  # かな漢字変換 (subtree)
 │   └── csharp-ime/         # C# IME実装（実験的）
-├── build.bat               # メインビルドスクリプト
+├── build-x64.bat           # x64ビルドスクリプト
+├── build-arm64.bat         # arm64ビルドスクリプト
 ├── clean.bat               # クリーンアップ
-└── build/x64/release/      # ビルド成果物
+├── build/x64/release/      # x64ビルド成果物
+└── build/arm64/release/    # arm64ビルド成果物
 ```
 
 ## 主要コンポーネント

@@ -57,11 +57,16 @@ if exist "%SWIFT_DIR%\.build" (
     rmdir /s /q "%SWIFT_DIR%\.build" 2>nul
 )
 
-:: Clean output directory
-set "OUTPUT_DIR=%ROOT_DIR%build\x64\release"
-if exist "%OUTPUT_DIR%" (
-    echo Cleaning output directory...
-    rmdir /s /q "%OUTPUT_DIR%" 2>nul
+:: Clean output directories
+set "OUTPUT_DIR_X64=%ROOT_DIR%build\x64\release"
+set "OUTPUT_DIR_ARM64=%ROOT_DIR%build\arm64\release"
+if exist "%OUTPUT_DIR_X64%" (
+    echo Cleaning x64 output directory...
+    rmdir /s /q "%OUTPUT_DIR_X64%" 2>nul
+)
+if exist "%OUTPUT_DIR_ARM64%" (
+    echo Cleaning arm64 output directory...
+    rmdir /s /q "%OUTPUT_DIR_ARM64%" 2>nul
 )
 
 :: Clean old ninja build directories
@@ -90,7 +95,7 @@ echo ==============================================
 echo Cleanup completed!
 echo ==============================================
 echo.
-echo To rebuild from scratch, run: build.bat
+echo To rebuild from scratch, run: build-x64.bat or build-arm64.bat
 echo.
 
 endlocal
