@@ -296,11 +296,11 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 :: Copy MSI to root
-set "MSI_PATH=%MOZC_SRC%\bazel-bin\win32\installer\Mozc_X64.msi"
+set "MSI_PATH=%MOZC_SRC%\bazel-bin\win32\installer\Mozc_x64.msi"
 if exist "%MSI_PATH%" (
-    copy /y "%MSI_PATH%" "%ROOT_DIR%Mozc_X64.msi" >nul
+    copy /y "%MSI_PATH%" "%ROOT_DIR%Mozc_x64.msi" >nul
     echo.
-    echo x64 MSI installer created: %ROOT_DIR%Mozc_X64.msi
+    echo x64 MSI installer created: %ROOT_DIR%Mozc_x64.msi
 )
 
 popd
@@ -312,11 +312,11 @@ echo ==============================================
 echo.
 echo Output files:
 echo   DLL: %OUTPUT_DIR%\azookey-engine.dll
-echo   MSI: %ROOT_DIR%Mozc_X64.msi
+echo   MSI: %ROOT_DIR%Mozc_x64.msi
 echo.
 echo To install the IME:
 echo   1. Uninstall any existing Mozc/MyIME
-echo   2. Run Mozc_X64.msi as administrator
+echo   2. Run Mozc_x64.msi as administrator
 echo   3. Restart your computer
 echo.
 
