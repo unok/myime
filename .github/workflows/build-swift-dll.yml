@@ -16,7 +16,8 @@ on:
       - '.github/workflows/build-swift-dll.yml'
 
 jobs:
-  build-x64:
+  # Prepare job: fetch dependencies on x64 (stable network)
+  prepare:
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -43,15 +44,59 @@ jobs:
           branch: swift-6.1-release
           tag: 6.1-RELEASE
 
-      - name: Cache Swift PM
-        uses: actions/cache@v4
+      - name: Resolve Swift dependencies
+        shell: pwsh
+        run: |
+          cd src/swift-engine
+          swift package resolve
+
+      - name: Cache Swift PM dependencies
+        uses: actions/cache/save@v4
         with:
           path: |
-            src/swift-engine/.build
+            src/swift-engine/.build/checkouts
+            src/swift-engine/.build/repositories
             ~\AppData\Local\org.swift.swiftpm
-          key: swift-pm-x64-${{ hashFiles('src/swift-engine/Package.resolved', 'src/AzooKeyKanaKanjiConverter/Package.resolved') }}
-          restore-keys: |
-            swift-pm-x64-
+          key: swift-deps-${{ hashFiles('src/swift-engine/Package.resolved') }}
+
+  build-x64:
+    runs-on: windows-latest
+    needs: prepare
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore submodules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            mozc
+            dictionaries
+            src/AzooKeyKanaKanjiConverter/Sources/KanaKanjiConverterModuleWithDefaultDictionary/azooKey_dictionary_storage
+            src/AzooKeyKanaKanjiConverter/Sources/KanaKanjiConverterModuleWithDefaultDictionary/azooKey_emoji_dictionary_storage
+          key: submodules-${{ hashFiles('.gitmodules') }}
+
+      - name: Initialize submodules if cache missed
+        run: |
+          if (!(Test-Path "mozc/.git")) {
+            git submodule update --init --recursive --depth=1
+          }
+        shell: pwsh
+
+      - name: Install Swift
+        uses: compnerd/gha-setup-swift@main
+        with:
+          branch: swift-6.1-release
+          tag: 6.1-RELEASE
+
+      - name: Restore Swift PM dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            src/swift-engine/.build/checkouts
+            src/swift-engine/.build/repositories
+            ~\AppData\Local\org.swift.swiftpm
+          key: swift-deps-${{ hashFiles('src/swift-engine/Package.resolved') }}
 
       - name: Build Swift DLL
         shell: pwsh
@@ -103,20 +148,13 @@ jobs:
 
   build-arm64:
     runs-on: windows-11-arm
+    needs: prepare
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure Git for ARM64
-        run: |
-          git config --global http.postBuffer 524288000
-          git config --global http.lowSpeedLimit 0
-          git config --global http.lowSpeedTime 999999
-          git config --global core.compression 0
-
-      - name: Cache submodules
-        id: cache-submodules
-        uses: actions/cache@v4
+      - name: Restore submodules cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             mozc
@@ -125,9 +163,12 @@ jobs:
             src/AzooKeyKanaKanjiConverter/Sources/KanaKanjiConverterModuleWithDefaultDictionary/azooKey_emoji_dictionary_storage
           key: submodules-${{ hashFiles('.gitmodules') }}
 
-      - name: Initialize submodules
-        if: steps.cache-submodules.outputs.cache-hit != 'true'
-        run: git submodule update --init --recursive --depth=1
+      - name: Initialize submodules if cache missed
+        run: |
+          if (!(Test-Path "mozc/.git")) {
+            git submodule update --init --recursive --depth=1
+          }
+        shell: pwsh
 
       - name: Install Swift
         uses: compnerd/gha-setup-swift@main
@@ -135,15 +176,14 @@ jobs:
           branch: swift-6.1-release
           tag: 6.1-RELEASE
 
-      - name: Cache Swift PM
-        uses: actions/cache@v4
+      - name: Restore Swift PM dependencies
+        uses: actions/cache/restore@v4
         with:
           path: |
-            src/swift-engine/.build
+            src/swift-engine/.build/checkouts
+            src/swift-engine/.build/repositories
             ~\AppData\Local\org.swift.swiftpm
-          key: swift-pm-arm64-${{ hashFiles('src/swift-engine/Package.resolved', 'src/AzooKeyKanaKanjiConverter/Package.resolved') }}
-          restore-keys: |
-            swift-pm-arm64-
+          key: swift-deps-${{ hashFiles('src/swift-engine/Package.resolved') }}
 
       - name: Build Swift DLL
         shell: pwsh
