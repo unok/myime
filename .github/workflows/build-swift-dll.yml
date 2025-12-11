@@ -50,14 +50,18 @@ jobs:
           cd src/swift-engine
           swift package resolve
 
+      - name: Create tarball of Swift dependencies
+        shell: pwsh
+        run: |
+          cd src/swift-engine
+          tar -czf swift-deps.tar.gz .build/checkouts .build/repositories .build/workspace-state.json
+          Move-Item swift-deps.tar.gz $env:GITHUB_WORKSPACE/
+
       - name: Upload Swift dependencies artifact
         uses: actions/upload-artifact@v4
         with:
           name: swift-deps
-          path: |
-            src/swift-engine/.build/checkouts
-            src/swift-engine/.build/repositories
-            src/swift-engine/.build/workspace-state.json
+          path: swift-deps.tar.gz
           retention-days: 1
 
   build-x64:
@@ -94,7 +98,15 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: swift-deps
-          path: src/swift-engine/.build
+          path: .
+
+      - name: Extract Swift dependencies
+        shell: pwsh
+        run: |
+          cd src/swift-engine
+          tar -xzf $env:GITHUB_WORKSPACE/swift-deps.tar.gz
+          Write-Host "Extracted files:"
+          Get-ChildItem -Recurse .build | Select-Object -First 20
 
       - name: Build Swift DLL
         shell: pwsh
@@ -178,7 +190,15 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: swift-deps
-          path: src/swift-engine/.build
+          path: .
+
+      - name: Extract Swift dependencies
+        shell: pwsh
+        run: |
+          cd src/swift-engine
+          tar -xzf $env:GITHUB_WORKSPACE/swift-deps.tar.gz
+          Write-Host "Extracted files:"
+          Get-ChildItem -Recurse .build | Select-Object -First 20
 
       - name: Build Swift DLL
         shell: pwsh
@@ -192,18 +212,13 @@ jobs:
             $retryCount++
             Write-Host "Attempt $retryCount of $maxRetries..."
 
-            try {
-              swift build -c release
-              if ($LASTEXITCODE -eq 0) {
-                $success = $true
-                Write-Host "Build succeeded on attempt $retryCount"
-              } else {
-                Write-Host "Build failed with exit code $LASTEXITCODE, retrying..."
-                Start-Sleep -Seconds 5
-              }
-            } catch {
-              Write-Host "Build threw exception: $_"
-              Start-Sleep -Seconds 5
+            swift build -c release
+            if ($LASTEXITCODE -eq 0) {
+              $success = $true
+              Write-Host "Build succeeded on attempt $retryCount"
+            } else {
+              Write-Host "Build failed with exit code $LASTEXITCODE, retrying..."
+              Start-Sleep -Seconds 10
             }
           }
 
