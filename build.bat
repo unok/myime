@@ -395,9 +395,18 @@ if exist "%MSI_PATH_X64%" (
 if "%BUILD_ARM64%"=="1" (
     echo.
     echo Building ARM64 MSI installer with Bazel...
-    echo NOTE: This requires ARM64 cross-compilation support in Mozc.
-    echo Skipping ARM64 MSI build for now - ARM64 Mozc components need to be built separately.
-    echo ARM64 DLLs are available in: %OUTPUT_DIR_ARM64%
+    bazelisk build --config=oss_windows //win32/installer:installer_arm64
+    if !ERRORLEVEL! NEQ 0 (
+        echo [WARNING] Bazel ARM64 build failed - ARM64 MSI will not be available
+        echo ARM64 DLLs are still available in: %OUTPUT_DIR_ARM64%
+    ) else (
+        set "MSI_PATH_ARM64=%MOZC_SRC%\bazel-bin\win32\installer\Mozc_ARM64.msi"
+        if exist "!MSI_PATH_ARM64!" (
+            copy /y "!MSI_PATH_ARM64!" "%ROOT_DIR%Mozc_ARM64.msi" >nul
+            echo.
+            echo ARM64 MSI installer created: %ROOT_DIR%Mozc_ARM64.msi
+        )
+    )
 )
 
 popd
@@ -413,6 +422,11 @@ if "%BUILD_ARM64%"=="1" (
     echo   ARM64 DLL: %OUTPUT_DIR_ARM64%\azookey-engine.dll
 )
 echo   x64 MSI: %ROOT_DIR%Mozc_x64.msi
+if "%BUILD_ARM64%"=="1" (
+    if exist "%ROOT_DIR%Mozc_ARM64.msi" (
+        echo   ARM64 MSI: %ROOT_DIR%Mozc_ARM64.msi
+    )
+)
 echo.
 echo To install the IME:
 echo   1. Uninstall any existing Mozc/MyIME
@@ -427,54 +441,55 @@ exit /b 0
 :: Subroutine: Build Swift ARM64 DLL
 :: ==============================================
 :build_swift_arm64
+setlocal EnableDelayedExpansion
 echo.
 echo Building Swift ARM64 DLL...
 
 :: Create ARM64 output directory
 if not exist "%OUTPUT_DIR_ARM64%" mkdir "%OUTPUT_DIR_ARM64%"
 
+:: Setup ARM64 Visual Studio environment for cross-compilation (in a new process)
+echo Setting up ARM64 cross-compilation environment...
+
 :: Change to Swift directory
 pushd "%SWIFT_DIR%"
 
-:: Build Swift package for ARM64 (uses --triple for cross-compilation)
+:: Build Swift package for ARM64 using cmd /c to isolate environment
 echo Building Swift package for ARM64 (this may take a few minutes)...
-swift build -c release --triple aarch64-unknown-windows-msvc
+cmd /c "call "%VS_PATH%\VC\Auxiliary\Build\vcvarsall.bat" x64_arm64 >nul 2>&1 && swift build -c release --triple aarch64-unknown-windows-msvc"
 if !ERRORLEVEL! NEQ 0 (
-    echo [ERROR] Swift ARM64 build failed
+    echo [WARNING] Swift ARM64 build failed - ARM64 MSI will not include Swift DLL
     popd
-    exit /b 1
+    endlocal
+    goto :eof
 )
 
 :: Copy DLL to ARM64 output directory
-set "SWIFT_DLL_ARM64=%SWIFT_DIR%\.build\release\azookey-engine.dll"
+:: Note: Cross-compilation outputs to .build\aarch64-unknown-windows-msvc\release
+set "SWIFT_DLL_ARM64=%SWIFT_DIR%\.build\aarch64-unknown-windows-msvc\release\azookey-engine.dll"
 if not exist "!SWIFT_DLL_ARM64!" (
-    echo [ERROR] ARM64 azookey-engine.dll not found in build output
+    :: Try alternate path for native ARM64 build
+    set "SWIFT_DLL_ARM64=%SWIFT_DIR%\.build\release\azookey-engine.dll"
+)
+if not exist "!SWIFT_DLL_ARM64!" (
+    echo [WARNING] ARM64 azookey-engine.dll not found in build output
+    echo   Tried: %SWIFT_DIR%\.build\aarch64-unknown-windows-msvc\release\azookey-engine.dll
+    echo   Tried: %SWIFT_DIR%\.build\release\azookey-engine.dll
     popd
-    exit /b 1
+    endlocal
+    goto :eof
 )
 
 copy /y "!SWIFT_DLL_ARM64!" "%OUTPUT_DIR_ARM64%\azookey-engine.dll" >nul
 echo Copied: azookey-engine.dll (ARM64)
 
-:: Copy Swift runtime libraries for ARM64
-if defined SWIFT_RUNTIME (
-    echo Copying Swift runtime libraries for ARM64 from: !SWIFT_RUNTIME!
-    copy /y "!SWIFT_RUNTIME!\swiftCore.dll" "%OUTPUT_DIR_ARM64%\" >nul 2>&1
-    copy /y "!SWIFT_RUNTIME!\swiftCRT.dll" "%OUTPUT_DIR_ARM64%\" >nul 2>&1
-    copy /y "!SWIFT_RUNTIME!\swiftDispatch.dll" "%OUTPUT_DIR_ARM64%\" >nul 2>&1
-    copy /y "!SWIFT_RUNTIME!\swift_Concurrency.dll" "%OUTPUT_DIR_ARM64%\" >nul 2>&1
-    copy /y "!SWIFT_RUNTIME!\swiftWinSDK.dll" "%OUTPUT_DIR_ARM64%\" >nul 2>&1
-    copy /y "!SWIFT_RUNTIME!\Foundation.dll" "%OUTPUT_DIR_ARM64%\" >nul 2>&1
-    copy /y "!SWIFT_RUNTIME!\FoundationEssentials.dll" "%OUTPUT_DIR_ARM64%\" >nul 2>&1
-    copy /y "!SWIFT_RUNTIME!\FoundationInternationalization.dll" "%OUTPUT_DIR_ARM64%\" >nul 2>&1
-    copy /y "!SWIFT_RUNTIME!\_FoundationICU.dll" "%OUTPUT_DIR_ARM64%\" >nul 2>&1
-    copy /y "!SWIFT_RUNTIME!\BlocksRuntime.dll" "%OUTPUT_DIR_ARM64%\" >nul 2>&1
-    copy /y "!SWIFT_RUNTIME!\dispatch.dll" "%OUTPUT_DIR_ARM64%\" >nul 2>&1
-    echo   Copied Swift runtime DLLs for ARM64
-) else (
-    echo [WARNING] Swift runtime not found - ARM64 runtime DLLs may be missing
-)
+:: Note: Swift Runtime DLLs for ARM64 need to be obtained separately
+:: The x64 runtime DLLs are not compatible with ARM64
+echo [INFO] Swift ARM64 runtime DLLs need to be obtained from ARM64 Swift installation
+echo        Skipping Swift runtime copy for ARM64
 
 popd
+endlocal
 echo Swift ARM64 DLL build completed.
 goto :eof
+
