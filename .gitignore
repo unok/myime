@@ -10,6 +10,7 @@ build/
 .build/
 .swiftpm/
 Package.resolved
+!src/swift-engine/Package.resolved
 
 # .NET build
 bin/

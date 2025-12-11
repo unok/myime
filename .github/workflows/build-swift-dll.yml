@@ -107,6 +107,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Configure Git for ARM64
+        run: |
+          git config --global http.postBuffer 524288000
+          git config --global http.lowSpeedLimit 0
+          git config --global http.lowSpeedTime 999999
+          git config --global core.compression 0
+
       - name: Cache submodules
         id: cache-submodules
         uses: actions/cache@v4
