@@ -21,8 +21,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Cache submodules
+        id: cache-submodules
+        uses: actions/cache@v4
         with:
-          submodules: recursive
+          path: |
+            mozc
+            dictionaries
+            src/AzooKeyKanaKanjiConverter/Sources/KanaKanjiConverterModuleWithDefaultDictionary/azooKey_dictionary_storage
+            src/AzooKeyKanaKanjiConverter/Sources/KanaKanjiConverterModuleWithDefaultDictionary/azooKey_emoji_dictionary_storage
+          key: submodules-${{ hashFiles('.gitmodules') }}
+
+      - name: Initialize submodules
+        if: steps.cache-submodules.outputs.cache-hit != 'true'
+        run: git submodule update --init --recursive --depth=1
 
       - name: Install Swift
         uses: compnerd/gha-setup-swift@main
@@ -93,8 +106,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Cache submodules
+        id: cache-submodules
+        uses: actions/cache@v4
         with:
-          submodules: recursive
+          path: |
+            mozc
+            dictionaries
+            src/AzooKeyKanaKanjiConverter/Sources/KanaKanjiConverterModuleWithDefaultDictionary/azooKey_dictionary_storage
+            src/AzooKeyKanaKanjiConverter/Sources/KanaKanjiConverterModuleWithDefaultDictionary/azooKey_emoji_dictionary_storage
+          key: submodules-${{ hashFiles('.gitmodules') }}
+
+      - name: Initialize submodules
+        if: steps.cache-submodules.outputs.cache-hit != 'true'
+        run: git submodule update --init --recursive --depth=1
 
       - name: Install Swift
         uses: compnerd/gha-setup-swift@main
