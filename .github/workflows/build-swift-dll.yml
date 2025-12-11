@@ -50,15 +50,15 @@ jobs:
           cd src/swift-engine
           swift package resolve
 
-      - name: Cache Swift PM dependencies
-        uses: actions/cache/save@v4
+      - name: Upload Swift dependencies artifact
+        uses: actions/upload-artifact@v4
         with:
+          name: swift-deps
           path: |
             src/swift-engine/.build/checkouts
             src/swift-engine/.build/repositories
             src/swift-engine/.build/workspace-state.json
-            ~\AppData\Local\org.swift.swiftpm
-          key: swift-deps-${{ hashFiles('src/swift-engine/Package.resolved') }}
+          retention-days: 1
 
   build-x64:
     runs-on: windows-latest
@@ -90,21 +90,17 @@ jobs:
           branch: swift-6.1-release
           tag: 6.1-RELEASE
 
-      - name: Restore Swift PM dependencies
-        uses: actions/cache/restore@v4
+      - name: Download Swift dependencies
+        uses: actions/download-artifact@v4
         with:
-          path: |
-            src/swift-engine/.build/checkouts
-            src/swift-engine/.build/repositories
-            src/swift-engine/.build/workspace-state.json
-            ~\AppData\Local\org.swift.swiftpm
-          key: swift-deps-${{ hashFiles('src/swift-engine/Package.resolved') }}
+          name: swift-deps
+          path: src/swift-engine/.build
 
       - name: Build Swift DLL
         shell: pwsh
         run: |
           cd src/swift-engine
-          swift build -c release --disable-automatic-resolution
+          swift build -c release
 
       - name: Collect artifacts
         shell: pwsh
@@ -178,21 +174,17 @@ jobs:
           branch: swift-6.1-release
           tag: 6.1-RELEASE
 
-      - name: Restore Swift PM dependencies
-        uses: actions/cache/restore@v4
+      - name: Download Swift dependencies
+        uses: actions/download-artifact@v4
         with:
-          path: |
-            src/swift-engine/.build/checkouts
-            src/swift-engine/.build/repositories
-            src/swift-engine/.build/workspace-state.json
-            ~\AppData\Local\org.swift.swiftpm
-          key: swift-deps-${{ hashFiles('src/swift-engine/Package.resolved') }}
+          name: swift-deps
+          path: src/swift-engine/.build
 
       - name: Build Swift DLL
         shell: pwsh
         run: |
           cd src/swift-engine
-          swift build -c release --disable-automatic-resolution
+          swift build -c release
 
       - name: Collect artifacts
         shell: pwsh
