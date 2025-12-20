@@ -11,8 +11,13 @@ let package = Package(
             targets: ["azookey-engine"]
         ),
     ],
+    traits: [
+        .trait(name: "Zenzai"),
+        .trait(name: "ZenzaiCPU"),
+        .default(enabledTraits: [])
+    ],
     dependencies: [
-        .package(path: "../AzooKeyKanaKanjiConverter"),
+        .package(path: "../AzooKeyKanaKanjiConverter", traits: ["Zenzai"]),
     ],
     targets: [
         .target(
@@ -32,6 +37,14 @@ let package = Package(
             swiftSettings: [
                 .enableExperimentalFeature("Extern"),
                 .interoperabilityMode(.Cxx)
+            ],
+            linkerSettings: [
+                .linkedLibrary("llama", .when(platforms: [.windows])),
+                .linkedLibrary("ggml", .when(platforms: [.windows])),
+                .linkedLibrary("ggml-base", .when(platforms: [.windows])),
+                .linkedLibrary("ggml-cpu", .when(platforms: [.windows])),
+                .linkedLibrary("ggml-vulkan", .when(platforms: [.windows])),
+                .unsafeFlags(["-L../AzooKeyKanaKanjiConverter/lib/windows"], .when(platforms: [.windows]))
             ]
         ),
     ]

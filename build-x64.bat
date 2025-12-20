@@ -185,8 +185,8 @@ call "%VS_PATH%\VC\Auxiliary\Build\vcvarsall.bat" x64 >nul 2>&1
 :: Change to Swift directory
 pushd "%SWIFT_DIR%"
 
-:: Build Swift package
-echo Building Swift package (this may take a few minutes)...
+:: Build Swift package (Zenzai is enabled via Package.swift dependency)
+echo Building Swift package with Zenzai support (this may take a few minutes)...
 swift build -c release --arch x86_64
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Swift build failed
@@ -288,12 +288,15 @@ python build_tools\update_deps.py --noqt --nollvm --nomsys2 --nondk --nosubmodul
 :: Build MSI installer with Bazel
 echo.
 echo Building x64 MSI installer with Bazel (this may take several minutes)...
-bazelisk build --config=oss_windows //win32/installer:installer_x64
+echo   Output is being logged to: %ROOT_DIR%build-mozc.log
+bazelisk build --config=oss_windows //win32/installer:installer_x64 > "%ROOT_DIR%build-mozc.log" 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Bazel x64 build failed
+    echo   See build-mozc.log for details
     popd
     exit /b 1
 )
+echo   Bazel build completed successfully
 
 :: Copy MSI to root
 set "MSI_PATH=%MOZC_SRC%\bazel-bin\win32\installer\Mozc_x64.msi"

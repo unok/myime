@@ -159,10 +159,16 @@ public func getCandidates() -> UnsafePointer<CChar>? {
     let result = conv.requestCandidates(composingText, options: getOptions())
     currentCandidates = result.mainResults
 
-    // Return candidates as JSON array
-    let candidateTexts = currentCandidates.map { $0.text }
+    // Return candidates as JSON array with text and correspondingCount
+    // correspondingCount is the number of hiragana characters this candidate covers
+    let candidateObjects = currentCandidates.map { candidate -> [String: Any] in
+        return [
+            "text": candidate.text,
+            "correspondingCount": candidate.rubyCount
+        ]
+    }
 
-    guard let jsonData = try? JSONSerialization.data(withJSONObject: candidateTexts),
+    guard let jsonData = try? JSONSerialization.data(withJSONObject: candidateObjects),
           let jsonString = String(data: jsonData, encoding: .utf8) else {
         return UnsafePointer(_strdup("[]"))
     }
@@ -211,6 +217,39 @@ public func setZenzaiInferenceLimit(_ limit: Int32) {
     config.zenzaiInferenceLimit = Int(limit)
 }
 
+@_silgen_name("SetZenzaiWeightPath")
+public func setZenzaiWeightPath(_ path: UnsafePointer<CChar>?) {
+    guard let path = path else { return }
+    config.zenzaiWeightPath = String(cString: path)
+}
+
+@_silgen_name("GetZenzaiStatus")
+public func getZenzaiStatus() -> UnsafePointer<CChar>? {
+    var status: [String: Any] = [
+        "enabled": config.zenzaiEnabled,
+        "weightPath": config.zenzaiWeightPath,
+        "inferenceLimit": config.zenzaiInferenceLimit
+    ]
+
+    // Check if Zenzai is actually active
+    if config.zenzaiEnabled && !config.zenzaiWeightPath.isEmpty {
+        // Check if model file exists
+        let fileExists = FileManager.default.fileExists(atPath: config.zenzaiWeightPath)
+        status["modelExists"] = fileExists
+        status["active"] = fileExists
+    } else {
+        status["modelExists"] = false
+        status["active"] = false
+    }
+
+    guard let jsonData = try? JSONSerialization.data(withJSONObject: status),
+          let jsonString = String(data: jsonData, encoding: .utf8) else {
+        return UnsafePointer(_strdup("{\"error\": \"Failed to serialize status\"}"))
+    }
+
+    return UnsafePointer(_strdup(jsonString))
+}
+
 @_silgen_name("FreeString")
 public func freeString(_ str: UnsafePointer<CChar>?) {
     guard let str = str else { return }
@@ -222,15 +261,15 @@ public func freeString(_ str: UnsafePointer<CChar>?) {
 @_cdecl("azookey_create")
 public func azookey_create(_ configJson: UnsafePointer<CChar>?) -> UnsafeMutableRawPointer? {
     guard let configJson = configJson else { return nil }
-    
+
     let jsonString = String(cString: configJson)
-    
+
     // Parse JSON configuration
     guard let jsonData = jsonString.data(using: .utf8),
           let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
         return nil
     }
-    
+
     // Update configuration
     if let dictPath = json["dictionaryPath"] as? String {
         config.dictionaryPath = dictPath
@@ -247,10 +286,10 @@ public func azookey_create(_ configJson: UnsafePointer<CChar>?) -> UnsafeMutable
     if let zenzaiWeight = json["zenzaiWeightPath"] as? String {
         config.zenzaiWeightPath = zenzaiWeight
     }
-    
+
     // Initialize converter
     initialize(nil, nil)
-    
+
     // Return a dummy handle (not nil to indicate success)
     return UnsafeMutableRawPointer(bitPattern: 1)
 }
@@ -263,11 +302,11 @@ public func azookey_destroy(_ engine: UnsafeMutableRawPointer?) {
 @_cdecl("azookey_convert")
 public func azookey_convert(_ engine: UnsafeMutableRawPointer?, _ input: UnsafePointer<CChar>?) -> UnsafePointer<CChar>? {
     guard let input = input else { return nil }
-    
+
     // Clear existing text and append new input
     clearText()
     appendText(input)
-    
+
     // Get conversion result
     return getComposedText()
 }

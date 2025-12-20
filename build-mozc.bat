@@ -37,11 +37,14 @@ cd /d "%MOZC_SRC%"
 
 echo.
 echo Building mozc_server (64-bit dynamic)...
-ninja -C out_win\ReleaseDynamic_x64 mozc_server
+echo   Output is being logged to: %ROOT_DIR%build-mozc.log
+ninja -C out_win\ReleaseDynamic_x64 mozc_server > "%ROOT_DIR%build-mozc.log" 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Build failed
+    echo   See build-mozc.log for details
     exit /b 1
 )
+echo   Build completed successfully
 
 echo.
 echo Build completed successfully!

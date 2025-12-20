@@ -12,23 +12,7 @@ echo ==============================================
 echo MyIME Clean Script
 echo ==============================================
 echo.
-echo This will remove build artifacts including:
-echo   - Bazel build cache
-echo   - Swift build directory
-echo   - Output directory
-echo   - Old ninja build directories
-echo   - Log files
-echo.
-
-set /p "CONFIRM=Continue? (y/n): "
-if /i not "%CONFIRM%"=="y" (
-    echo Cancelled.
-    exit /b 0
-)
-
-echo.
 echo Cleaning...
-echo.
 
 :: Clean Bazel cache
 echo Cleaning Bazel cache...

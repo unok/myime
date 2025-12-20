@@ -203,8 +203,8 @@ echo   SDK ARM64 um:   %WIN_SDK_ARM64_UM%
 :: Change to Swift directory
 pushd "%SWIFT_DIR%"
 
-:: Build Swift package for ARM64 with explicit LIB path
-echo Building Swift package for ARM64 (this may take a few minutes)...
+:: Build Swift package for ARM64 with explicit LIB path (Zenzai is enabled via Package.swift)
+echo Building Swift package for ARM64 with Zenzai support (this may take a few minutes)...
 set "ARM64_LIB=%MSVC_ARM64_LIB%;%WIN_SDK_ARM64_UCRT%;%WIN_SDK_ARM64_UM%"
 cmd /c "set LIB=%ARM64_LIB% && swift build -c release --triple aarch64-unknown-windows-msvc"
 if %ERRORLEVEL% NEQ 0 (
@@ -290,12 +290,15 @@ python build_tools\update_deps.py --noqt --nollvm --nomsys2 --nondk --nosubmodul
 :: Build ARM64 MSI installer with Bazel
 echo.
 echo Building ARM64 MSI installer with Bazel (this may take several minutes)...
-bazelisk build --config=oss_windows //win32/installer:installer_arm64
+echo   Output is being logged to: %ROOT_DIR%build-mozc.log
+bazelisk build --config=oss_windows //win32/installer:installer_arm64 > "%ROOT_DIR%build-mozc.log" 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Bazel ARM64 build failed
+    echo   See build-mozc.log for details
     popd
     exit /b 1
 )
+echo   Bazel build completed successfully
 
 :: Copy MSI to root
 set "MSI_PATH=%MOZC_SRC%\bazel-bin\win32\installer\Mozc_arm64.msi"
