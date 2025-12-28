@@ -1,4 +1,4 @@
-name: Build x64
+name: Build ARM64
 
 on:
   push:
@@ -13,7 +13,7 @@ env:
 
 jobs:
   build:
-    runs-on: windows-2022
+    runs-on: windows-11-arm
     timeout-minutes: 120
 
     steps:
@@ -49,7 +49,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: mozc/src/third_party/qt
-          key: qt-windows-x64-v2-${{ hashFiles('mozc/src/build_tools/build_qt.py') }}
+          key: qt-windows-arm64-v2-${{ hashFiles('mozc/src/build_tools/build_qt.py') }}
 
       - name: Cache Bazel repository
         uses: actions/cache@v4
@@ -57,50 +57,50 @@ jobs:
           path: |
             ~/.cache/bazel
             ~/.cache/bazelisk
-          key: bazel-windows-x64-${{ hashFiles('mozc/src/MODULE.bazel', 'mozc/src/.bazelrc') }}
+          key: bazel-windows-arm64-${{ hashFiles('mozc/src/MODULE.bazel', 'mozc/src/.bazelrc') }}
           restore-keys: |
-            bazel-windows-x64-
+            bazel-windows-arm64-
 
       - name: Cache Swift Package Manager
         uses: actions/cache@v4
         with:
           path: src/swift-engine/.build
-          key: swift-pm-windows-x64-${{ hashFiles('src/swift-engine/Package.swift', 'src/swift-engine/Package.resolved') }}
+          key: swift-pm-windows-arm64-${{ hashFiles('src/swift-engine/Package.swift', 'src/swift-engine/Package.resolved') }}
           restore-keys: |
-            swift-pm-windows-x64-
+            swift-pm-windows-arm64-
 
       - name: Cache llama.cpp build
         id: cache-llama
         uses: actions/cache@v4
         with:
           path: llama.cpp-build
-          key: llama-cpp-windows-x64-vulkan-${{ env.LLAMA_CPP_VERSION }}
+          key: llama-cpp-windows-arm64-vulkan-${{ env.LLAMA_CPP_VERSION }}
 
       - name: Create build directories
-        run: mkdir -p build/x64/release
+        run: mkdir -p build/arm64/release
         shell: bash
 
       # Build llama.cpp
       - name: Build llama.cpp
         if: steps.cache-llama.outputs.cache-hit != 'true'
         shell: cmd
-        run: scripts\ci\build-llama-cpp.bat x64 %LLAMA_CPP_VERSION% llama.cpp-build
+        run: scripts\ci\build-llama-cpp.bat arm64 %LLAMA_CPP_VERSION% llama.cpp-build
 
       - name: Copy llama.cpp DLLs
         shell: pwsh
-        run: scripts/ci/copy-llama-dlls.ps1 -Arch x64 -SourceDir llama.cpp-build
+        run: scripts/ci/copy-llama-dlls.ps1 -Arch arm64 -SourceDir llama.cpp-build
 
       # Build Swift DLL
       - name: Build Swift DLL
         shell: cmd
         run: |
           cd src\swift-engine
-          swift build -c release --arch x86_64
-          copy /y .build\release\azookey-engine.dll ..\..\build\x64\release\
+          swift build -c release
+          copy /y .build\release\azookey-engine.dll ..\..\build\arm64\release\
 
       - name: Copy Swift Runtime DLLs
         shell: pwsh
-        run: scripts/ci/copy-swift-runtime.ps1 -OutputDir build/x64/release
+        run: scripts/ci/copy-swift-runtime.ps1 -OutputDir build/arm64/release
 
       # Build Mozc
       - name: Download Qt source
@@ -126,26 +126,26 @@ jobs:
         working-directory: mozc/src
         run: python build_tools/update_deps.py --noqt --nollvm --nomsys2 --nondk --nosubmodules
 
-      - name: Build Mozc x64 MSI
+      - name: Build Mozc ARM64 MSI
         shell: cmd
         working-directory: mozc/src
-        run: bazelisk build --config=oss_windows --spawn_strategy=local //win32/installer:installer_x64
+        run: bazelisk build --config=oss_windows //win32/installer:installer_arm64
 
       - name: Copy MSI
-        run: copy mozc\src\bazel-bin\win32\installer\Mozc_x64.msi .
+        run: copy mozc\src\bazel-bin\win32\installer\Mozc_arm64.msi .
         shell: cmd
 
       # Upload artifacts
       - name: Upload MSI
         uses: actions/upload-artifact@v4
         with:
-          name: Mozc_x64
-          path: Mozc_x64.msi
+          name: Mozc_ARM64
+          path: Mozc_arm64.msi
           retention-days: 30
 
       - name: Upload DLLs
         uses: actions/upload-artifact@v4
         with:
-          name: azookey-dlls-x64
-          path: build/x64/release/
+          name: azookey-dlls-arm64
+          path: build/arm64/release/
           retention-days: 30
