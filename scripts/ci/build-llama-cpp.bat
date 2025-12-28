@@ -71,12 +71,12 @@ if !ERRORLEVEL! NEQ 0 (
 echo Copying DLLs to %OUTPUT_DIR%...
 copy /y build\bin\Release\*.dll "..\%OUTPUT_DIR%\" >nul 2>&1
 
-:: .lib files - paths verified for b4200
+:: .lib files - paths verified for b4500
 echo Copying .lib files...
 copy /y build\src\Release\llama.lib "..\%OUTPUT_DIR%\"
 copy /y build\ggml\src\Release\ggml.lib "..\%OUTPUT_DIR%\"
 copy /y build\ggml\src\Release\ggml-base.lib "..\%OUTPUT_DIR%\"
-copy /y build\ggml\src\ggml-cpu\Release\ggml-cpu.lib "..\%OUTPUT_DIR%\"
+copy /y build\ggml\src\Release\ggml-cpu.lib "..\%OUTPUT_DIR%\"
 copy /y build\ggml\src\ggml-vulkan\Release\ggml-vulkan.lib "..\%OUTPUT_DIR%\"
 
 :: Show what was copied
