@@ -59,8 +59,8 @@ if !ERRORLEVEL! NEQ 0 (
     exit /b 1
 )
 
-echo Building...
-cmake --build build --config Release --parallel
+echo Building core libraries only (llama, ggml)...
+cmake --build build --config Release --parallel --target llama ggml
 if !ERRORLEVEL! NEQ 0 (
     echo [ERROR] Build failed
     cd ..
