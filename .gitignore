@@ -1,10 +1,14 @@
 # Build outputs
 build/
-*.dll
-*.exe
-*.pdb
-*.lib
-*.exp
+*.msi
+
+# llama.cpp DLLs (built from source in CI)
+src/AzooKeyKanaKanjiConverter/lib/windows/*.dll
+src/AzooKeyKanaKanjiConverter/lib/windows/*.lib
+src/AzooKeyKanaKanjiConverter/lib/windows-arm64/*.dll
+src/AzooKeyKanaKanjiConverter/lib/windows-arm64/*.lib
+llama.cpp-src/
+llama.cpp-build/
 
 # Swift build
 .build/
@@ -47,5 +51,3 @@ userdata/
 # src/AzooKeyKanaKanjiConverter-local/  # Replaced by src/AzooKeyKanaKanjiConverter
 # src/swift-tokenizers/  # Now a subtree
 
-# MSI installers
-*.msi
