@@ -1,0 +1,203 @@
+name: Build x64
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+env:
+  SWIFT_VERSION: "6.2.1"
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Swift
+        uses: SwiftyLab/setup-swift@latest
+        with:
+          swift-version: ${{ env.SWIFT_VERSION }}
+
+      - name: Verify Swift installation
+        run: swift --version
+
+      - name: Install Bazelisk
+        run: |
+          choco install bazelisk -y
+          bazelisk version
+
+      - name: Cache Qt build
+        id: cache-qt
+        uses: actions/cache@v4
+        with:
+          path: mozc/src/third_party/qt
+          key: qt-windows-${{ hashFiles('mozc/src/build_tools/build_qt.py') }}
+
+      - name: Cache Bazel repository
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/bazel
+            ~/.cache/bazelisk
+          key: bazel-windows-x64-${{ hashFiles('mozc/src/MODULE.bazel', 'mozc/src/.bazelrc') }}
+          restore-keys: |
+            bazel-windows-x64-
+
+      - name: Cache Swift Package Manager
+        uses: actions/cache@v4
+        with:
+          path: src/swift-engine/.build
+          key: swift-pm-windows-x64-${{ hashFiles('src/swift-engine/Package.swift', 'src/swift-engine/Package.resolved') }}
+          restore-keys: |
+            swift-pm-windows-x64-
+
+      - name: Create build output directory
+        run: |
+          mkdir -p build/x64/release
+        shell: bash
+
+      - name: Build Swift DLL
+        shell: cmd
+        run: |
+          cd src\swift-engine
+          swift build -c release --arch x86_64
+          copy /y .build\release\azookey-engine.dll ..\..\build\x64\release\
+
+      - name: Copy Swift Runtime DLLs
+        shell: pwsh
+        run: |
+          $swiftBin = (Get-Command swift).Source | Split-Path -Parent
+          $runtimePath = $swiftBin -replace 'Toolchains', 'Runtimes'
+
+          # Find the runtime directory
+          $runtimeDirs = @(
+            "$env:LOCALAPPDATA\Programs\Swift\Runtimes",
+            "$env:ProgramFiles\Swift\Runtimes",
+            "C:\Library\Swift\Runtimes"
+          )
+
+          $foundRuntime = $null
+          foreach ($dir in $runtimeDirs) {
+            if (Test-Path $dir) {
+              $subdirs = Get-ChildItem -Path $dir -Directory
+              foreach ($subdir in $subdirs) {
+                if (Test-Path "$($subdir.FullName)\usr\bin\swiftCore.dll") {
+                  $foundRuntime = "$($subdir.FullName)\usr\bin"
+                  break
+                }
+              }
+            }
+            if ($foundRuntime) { break }
+          }
+
+          if (-not $foundRuntime) {
+            # Fallback: try to find from swift binary path
+            $swiftPath = (Get-Command swift -ErrorAction SilentlyContinue).Source
+            if ($swiftPath) {
+              $toolchainBin = Split-Path -Parent $swiftPath
+              $runtimeBin = $toolchainBin -replace 'Toolchains[^\\]*', 'Runtimes\0.0.0'
+              if (Test-Path "$runtimeBin\swiftCore.dll") {
+                $foundRuntime = $runtimeBin
+              }
+            }
+          }
+
+          if ($foundRuntime) {
+            Write-Host "Found Swift Runtime at: $foundRuntime"
+            $dlls = @(
+              "swiftCore.dll",
+              "swiftCRT.dll",
+              "swiftDispatch.dll",
+              "swift_Concurrency.dll",
+              "swiftWinSDK.dll",
+              "Foundation.dll",
+              "FoundationEssentials.dll",
+              "FoundationInternationalization.dll",
+              "_FoundationICU.dll",
+              "BlocksRuntime.dll",
+              "dispatch.dll"
+            )
+            foreach ($dll in $dlls) {
+              $src = Join-Path $foundRuntime $dll
+              if (Test-Path $src) {
+                Copy-Item $src -Destination "build\x64\release\" -Force
+                Write-Host "Copied: $dll"
+              }
+            }
+          } else {
+            Write-Host "Warning: Swift Runtime not found"
+          }
+
+      - name: Copy llama.cpp DLLs
+        shell: pwsh
+        run: |
+          $llamaDir = "src\AzooKeyKanaKanjiConverter\lib\windows"
+          $outDir = "build\x64\release"
+          $dlls = @("ggml.dll", "ggml-base.dll", "ggml-cpu.dll", "ggml-vulkan.dll", "llama.dll", "llava_shared.dll", "mtmd.dll")
+
+          foreach ($dll in $dlls) {
+            $src = Join-Path $llamaDir $dll
+            if (Test-Path $src) {
+              Copy-Item $src -Destination $outDir -Force
+              Write-Host "Copied: $dll"
+            }
+          }
+
+      - name: Build Qt (if not cached)
+        if: steps.cache-qt.outputs.cache-hit != 'true'
+        shell: cmd
+        working-directory: mozc/src
+        run: |
+          python build_tools/build_qt.py --release --confirm_license
+
+      - name: Remove Qt source to save disk space
+        if: steps.cache-qt.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          if (Test-Path "mozc\src\third_party\qt_src") {
+            Remove-Item -Recurse -Force "mozc\src\third_party\qt_src"
+          }
+
+      - name: Update Mozc dependencies
+        shell: cmd
+        working-directory: mozc/src
+        run: |
+          python build_tools/update_deps.py --noqt --nollvm --nomsys2 --nondk --nosubmodules
+
+      - name: Build Mozc x64 MSI
+        shell: cmd
+        working-directory: mozc/src
+        run: |
+          bazelisk build --config=oss_windows --spawn_strategy=local //win32/installer:installer_x64
+
+      - name: Copy MSI to output
+        shell: pwsh
+        run: |
+          Copy-Item "mozc\src\bazel-bin\win32\installer\Mozc_x64.msi" -Destination "." -Force
+
+      - name: Upload MSI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mozc_x64
+          path: Mozc_x64.msi
+          retention-days: 30
+
+      - name: Upload DLLs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: azookey-dlls-x64
+          path: build/x64/release/
+          retention-days: 30
