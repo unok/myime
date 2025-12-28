@@ -71,26 +71,18 @@ if !ERRORLEVEL! NEQ 0 (
 echo Copying DLLs to %OUTPUT_DIR%...
 copy /y build\bin\Release\*.dll "..\%OUTPUT_DIR%\" >nul 2>&1
 
-:: .lib files are in different locations depending on llama.cpp version
+:: .lib files - paths verified for b4200
 echo Copying .lib files...
-copy /y build\src\Release\llama.lib "..\%OUTPUT_DIR%\" >nul 2>&1
-copy /y build\ggml\src\Release\ggml.lib "..\%OUTPUT_DIR%\" >nul 2>&1
+copy /y build\src\Release\llama.lib "..\%OUTPUT_DIR%\"
+copy /y build\ggml\src\Release\ggml.lib "..\%OUTPUT_DIR%\"
+copy /y build\ggml\src\Release\ggml-base.lib "..\%OUTPUT_DIR%\"
+copy /y build\ggml\src\ggml-cpu\Release\ggml-cpu.lib "..\%OUTPUT_DIR%\"
+copy /y build\ggml\src\ggml-vulkan\Release\ggml-vulkan.lib "..\%OUTPUT_DIR%\"
 
-:: Backend libraries may be in ggml-base, ggml-cpu, ggml-vulkan subdirectories
-copy /y build\ggml\src\ggml-base\Release\ggml-base.lib "..\%OUTPUT_DIR%\" >nul 2>&1
-copy /y build\ggml\src\ggml-cpu\Release\ggml-cpu.lib "..\%OUTPUT_DIR%\" >nul 2>&1
-copy /y build\ggml\src\ggml-vulkan\Release\ggml-vulkan.lib "..\%OUTPUT_DIR%\" >nul 2>&1
-
-:: Or they might be directly in ggml\src\Release
-copy /y build\ggml\src\Release\ggml-base.lib "..\%OUTPUT_DIR%\" >nul 2>&1
-copy /y build\ggml\src\Release\ggml-cpu.lib "..\%OUTPUT_DIR%\" >nul 2>&1
-copy /y build\ggml\src\Release\ggml-vulkan.lib "..\%OUTPUT_DIR%\" >nul 2>&1
-
-:: Also try alternative paths (structure varies by version)
-for /r build %%f in (*.lib) do (
-    echo   Found: %%f
-    copy /y "%%f" "..\%OUTPUT_DIR%\" >nul 2>&1
-)
+:: Show what was copied
+echo Verifying copied files:
+dir "..\%OUTPUT_DIR%\*.lib" 2>nul || echo No .lib files found
+dir "..\%OUTPUT_DIR%\*.dll" 2>nul || echo No .dll files found
 
 cd ..
 echo llama.cpp build completed successfully.
