@@ -59,8 +59,8 @@ if !ERRORLEVEL! NEQ 0 (
     exit /b 1
 )
 
-echo Building core libraries only (llama, ggml)...
-cmake --build build --config Release --parallel --target llama ggml
+echo Building core libraries (llama, ggml, ggml-base, ggml-cpu, ggml-vulkan)...
+cmake --build build --config Release --parallel --target llama ggml ggml-base ggml-cpu ggml-vulkan
 if !ERRORLEVEL! NEQ 0 (
     echo [ERROR] Build failed
     cd ..
@@ -71,10 +71,17 @@ if !ERRORLEVEL! NEQ 0 (
 echo Copying DLLs to %OUTPUT_DIR%...
 copy /y build\bin\Release\*.dll "..\%OUTPUT_DIR%\" >nul 2>&1
 
-:: .lib files are in different locations
+:: .lib files are in different locations depending on llama.cpp version
 echo Copying .lib files...
 copy /y build\src\Release\llama.lib "..\%OUTPUT_DIR%\" >nul 2>&1
 copy /y build\ggml\src\Release\ggml.lib "..\%OUTPUT_DIR%\" >nul 2>&1
+
+:: Backend libraries may be in ggml-base, ggml-cpu, ggml-vulkan subdirectories
+copy /y build\ggml\src\ggml-base\Release\ggml-base.lib "..\%OUTPUT_DIR%\" >nul 2>&1
+copy /y build\ggml\src\ggml-cpu\Release\ggml-cpu.lib "..\%OUTPUT_DIR%\" >nul 2>&1
+copy /y build\ggml\src\ggml-vulkan\Release\ggml-vulkan.lib "..\%OUTPUT_DIR%\" >nul 2>&1
+
+:: Or they might be directly in ggml\src\Release
 copy /y build\ggml\src\Release\ggml-base.lib "..\%OUTPUT_DIR%\" >nul 2>&1
 copy /y build\ggml\src\Release\ggml-cpu.lib "..\%OUTPUT_DIR%\" >nul 2>&1
 copy /y build\ggml\src\Release\ggml-vulkan.lib "..\%OUTPUT_DIR%\" >nul 2>&1
