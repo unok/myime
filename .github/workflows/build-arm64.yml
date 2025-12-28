@@ -1,4 +1,4 @@
-name: Build ARM64
+name: Build arm64
 
 on:
   push:
@@ -126,7 +126,7 @@ jobs:
         working-directory: mozc/src
         run: python build_tools/update_deps.py --noqt --nollvm --nomsys2 --nondk --nosubmodules
 
-      - name: Build Mozc ARM64 MSI
+      - name: Build Mozc arm64 MSI
         shell: cmd
         working-directory: mozc/src
         run: bazelisk build --config=oss_windows //win32/installer:installer_arm64
@@ -139,7 +139,7 @@ jobs:
       - name: Upload MSI
         uses: actions/upload-artifact@v4
         with:
-          name: Mozc_ARM64
+          name: Mozc_arm64
           path: Mozc_arm64.msi
           retention-days: 30
 
