@@ -9,7 +9,7 @@ on:
 
 env:
   SWIFT_VERSION: "6.2.1"
-  LLAMA_CPP_VERSION: "b4547"
+  LLAMA_CPP_VERSION: "b4000"
 
 jobs:
   build:
