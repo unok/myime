@@ -1,0 +1,61 @@
+===========================================
+    Zenzai Integration Test (Revised)
+===========================================
+
+--- Phase 1: File Checks ---
+[PASS] Model file exists
+[PASS] DLL file exists
+
+--- Phase 2: DLL Loading ---
+[PASS] DLL loaded
+
+--- Phase 3: Function Loading ---
+[PASS] Initialize
+[PASS] Shutdown
+[PASS] AppendText
+[PASS] ClearText
+[PASS] GetCandidates
+[PASS] FreeString
+[PASS] SetZenzaiEnabled
+[PASS] SetZenzaiWeightPath
+[PASS] GetZenzaiStatus
+
+--- Phase 4: Engine Initialization ---
+Calling Initialize(nullptr, nullptr)...
+[PASS] Initialize called
+
+--- Phase 5: Zenzai Configuration ---
+Setting Zenzai enabled...
+Setting Zenzai weight path: C:\Program Files\Mozc\models\ggml-model-Q5_K_M.gguf
+Setting inference limit to 10...
+[PASS] Zenzai configured
+
+--- Phase 6: Status Check ---
+Getting Zenzai status...
+Status: {"weightPath":"C:\\Program Files\\Mozc\\models\\ggml-model-Q5_K_M.gguf","active":true,"modelExists":true,"enabled":true,"inferenceLimit":10}
+[PASS] Zenzai active in status
+
+--- Phase 7: Conversion Test ---
+WARNING: This phase may trigger model loading and take time...
+Clearing text...
+Appending simple text: あ
+Getting candidates (this triggers Zenzai model loading)...
+Candidates: [{"text":"ある","correspondingCount":2},{"text":"あり","correspondingCount":2},{"text":"あ","correspondingCount":1},{"text":"あれ","correspondingCount":2},{"correspondingCount":1,"text":"亜"},...
+[PASS] Got candidates
+
+--- Phase 8: Full Conversion Test ---
+Testing with: きょう (kyou)
+Candidates: [{"text":"鏡","correspondingCount":3},{"text":"京都","correspondingCount":4},{"text":"今日は","correspondingCount":4},{"correspondingCount":4,"text":"今日も"},{"text":"強","correspondingCount":3},{"text":"今日","correspondingCount":3},{"text":"橋","correspondingCount":3},{"text":"きょ...
+[PASS] Kanji in candidates
+
+===========================================
+    Test Summary
+===========================================
+Passed: 17
+Failed: 0
+Total:  17
+===========================================
+
+[RESULT] ALL TESTS PASSED - Zenzai is working!
+
+(Skipping DLL cleanup to avoid llama.cpp crash on Windows)
