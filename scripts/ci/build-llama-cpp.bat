@@ -67,10 +67,23 @@ if !ERRORLEVEL! NEQ 0 (
     exit /b 1
 )
 
-:: Copy DLLs
+:: Copy DLLs and LIBs
 echo Copying DLLs to %OUTPUT_DIR%...
 copy /y build\bin\Release\*.dll "..\%OUTPUT_DIR%\" >nul 2>&1
-copy /y build\bin\Release\*.lib "..\%OUTPUT_DIR%\" >nul 2>&1
+
+:: .lib files are in different locations
+echo Copying .lib files...
+copy /y build\src\Release\llama.lib "..\%OUTPUT_DIR%\" >nul 2>&1
+copy /y build\ggml\src\Release\ggml.lib "..\%OUTPUT_DIR%\" >nul 2>&1
+copy /y build\ggml\src\Release\ggml-base.lib "..\%OUTPUT_DIR%\" >nul 2>&1
+copy /y build\ggml\src\Release\ggml-cpu.lib "..\%OUTPUT_DIR%\" >nul 2>&1
+copy /y build\ggml\src\Release\ggml-vulkan.lib "..\%OUTPUT_DIR%\" >nul 2>&1
+
+:: Also try alternative paths (structure varies by version)
+for /r build %%f in (*.lib) do (
+    echo   Found: %%f
+    copy /y "%%f" "..\%OUTPUT_DIR%\" >nul 2>&1
+)
 
 cd ..
 echo llama.cpp build completed successfully.
