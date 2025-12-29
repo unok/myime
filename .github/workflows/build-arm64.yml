@@ -1,11 +1,12 @@
-name: Build arm64
+name: Build arm64 (disabled)
+
+# ARM64 CI is temporarily disabled due to:
+# - Bazel issue #22164: C++ toolchain resolution broken on ARM64 Windows
+# - Swift ARM64 cross-compilation not supported
+# Re-enable when these issues are resolved.
 
 on:
-  push:
-    branches: [master]
-  pull_request:
-    branches: [master]
-  workflow_dispatch:
+  workflow_dispatch:  # Manual trigger only
 
 env:
   SWIFT_VERSION: "6.2.1"
