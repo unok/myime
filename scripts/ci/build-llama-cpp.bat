@@ -35,8 +35,13 @@ if not exist "%OUTPUT_DIR%" mkdir "%OUTPUT_DIR%"
 :: Set architecture for CMake
 if /i "%ARCH%"=="x64" (
     set "CMAKE_ARCH=x64"
+    set "CMAKE_TOOLCHAIN="
+    set "CMAKE_EXTRA_FLAGS="
 ) else if /i "%ARCH%"=="arm64" (
     set "CMAKE_ARCH=ARM64"
+    :: ARM64 requires Clang toolchain (MSVC not supported for ARM in ggml-cpu)
+    set "CMAKE_TOOLCHAIN=-T ClangCL"
+    set "CMAKE_EXTRA_FLAGS=-DGGML_OPENMP=OFF"
 ) else (
     echo [ERROR] Unknown architecture: %ARCH%
     exit /b 1
@@ -45,13 +50,14 @@ if /i "%ARCH%"=="x64" (
 :: Build
 cd llama.cpp-src
 echo Configuring CMake for %CMAKE_ARCH%...
-cmake -B build -G "Visual Studio 17 2022" -A %CMAKE_ARCH% ^
+cmake -B build -G "Visual Studio 17 2022" -A %CMAKE_ARCH% %CMAKE_TOOLCHAIN% ^
     -DCMAKE_BUILD_TYPE=Release ^
     -DGGML_VULKAN=ON ^
     -DLLAMA_BUILD_TESTS=OFF ^
     -DLLAMA_BUILD_EXAMPLES=OFF ^
     -DLLAMA_BUILD_SERVER=OFF ^
-    -DBUILD_SHARED_LIBS=ON
+    -DBUILD_SHARED_LIBS=ON ^
+    %CMAKE_EXTRA_FLAGS%
 
 if !ERRORLEVEL! NEQ 0 (
     echo [ERROR] CMake configuration failed
