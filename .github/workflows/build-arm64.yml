@@ -150,7 +150,7 @@ jobs:
       - name: Build Mozc arm64 MSI
         shell: cmd
         working-directory: mozc/src
-        run: bazelisk build --config=oss_windows //win32/installer:installer_arm64
+        run: bazelisk build --config=oss_windows --spawn_strategy=local //win32/installer:installer_arm64
 
       - name: Copy MSI
         run: copy mozc\src\bazel-bin\win32\installer\Mozc_arm64.msi .
