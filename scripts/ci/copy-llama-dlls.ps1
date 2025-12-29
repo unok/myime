@@ -18,11 +18,11 @@ $ErrorActionPreference = "Stop"
 # Set directories based on architecture
 if ($Arch -eq "x64") {
     $outDir = Join-Path $BuildDir "x64\release"
-    $libDir = "src\AzooKeyKanaKanjiConverter\lib\windows"
 } else {
     $outDir = Join-Path $BuildDir "arm64\release"
-    $libDir = "src\AzooKeyKanaKanjiConverter\lib\windows-arm64"
 }
+# Always use lib/windows for .lib files (Swift Package.swift references this path)
+$libDir = "src\AzooKeyKanaKanjiConverter\lib\windows"
 
 # Create directories
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
