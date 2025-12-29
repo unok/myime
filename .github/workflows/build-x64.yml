@@ -106,11 +106,18 @@ jobs:
 
       # Build Swift DLL
       - name: Build Swift DLL
-        shell: cmd
+        shell: pwsh
         run: |
-          cd src\swift-engine
+          Set-Location src/swift-engine
           swift build -c release --arch x86_64
-          copy /y .build\release\azookey-engine.dll ..\..\build\x64\release\
+          # Find the actual DLL path (symlink may fail on CI)
+          $dllPath = Get-ChildItem -Path .build -Recurse -Filter "azookey-engine.dll" | Where-Object { $_.FullName -match "release" } | Select-Object -First 1
+          if ($dllPath) {
+            Copy-Item -Force $dllPath.FullName -Destination "../../build/x64/release/"
+            Write-Host "Copied from: $($dllPath.FullName)"
+          } else {
+            throw "azookey-engine.dll not found"
+          }
 
       - name: Copy Swift Runtime DLLs
         shell: pwsh
