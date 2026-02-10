@@ -14,8 +14,18 @@ echo ==============================================
 echo.
 echo Cleaning...
 
-:: Clean Bazel cache
-echo Cleaning Bazel cache...
+:: Clean Bazel user cache first (avoids corrupt installation errors)
+echo Cleaning Bazel user cache...
+set "BAZEL_USER_CACHE=%USERPROFILE%\_bazel_%USERNAME%"
+if exist "%BAZEL_USER_CACHE%" (
+    rmdir /s /q "%BAZEL_USER_CACHE%" 2>nul
+    echo   Deleted %BAZEL_USER_CACHE%
+) else (
+    echo   No Bazel user cache found.
+)
+
+:: Clean Bazel cache (workspace)
+echo Cleaning Bazel workspace cache...
 pushd "%MOZC_SRC%"
 where bazelisk >nul 2>&1
 if !ERRORLEVEL! EQU 0 (
@@ -40,6 +50,10 @@ if exist "%SWIFT_DIR%\.build" (
     echo Cleaning Swift build directory...
     rmdir /s /q "%SWIFT_DIR%\.build" 2>nul
 )
+if exist "%SWIFT_DIR%\.swiftpm" (
+    echo Cleaning Swift Package Manager cache...
+    rmdir /s /q "%SWIFT_DIR%\.swiftpm" 2>nul
+)
 
 :: Clean output directories
 set "OUTPUT_DIR_X64=%ROOT_DIR%build\x64\release"
@@ -62,6 +76,22 @@ if exist "%MOZC_SRC%\out_win" (
 :: Clean log files
 echo Cleaning log files...
 del /q "%ROOT_DIR%*.log" 2>nul
+
+:: Clean MSI files
+echo Cleaning MSI files...
+del /q "%ROOT_DIR%*.msi" 2>nul
+
+:: Clean llama.cpp build cache
+echo Cleaning llama.cpp build cache...
+if exist "%ROOT_DIR%llama.cpp-src" rmdir /s /q "%ROOT_DIR%llama.cpp-src" 2>nul
+if exist "%ROOT_DIR%llama.cpp-build" rmdir /s /q "%ROOT_DIR%llama.cpp-build" 2>nul
+
+:: Clean llama.cpp DLLs in lib directories
+echo Cleaning llama.cpp DLLs...
+del /q "%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows\*.dll" 2>nul
+del /q "%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows\*.lib" 2>nul
+del /q "%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows-arm64\*.dll" 2>nul
+del /q "%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows-arm64\*.lib" 2>nul
 
 :: Clean old directories
 if exist "%ROOT_DIR%build-azookey" rmdir /s /q "%ROOT_DIR%build-azookey" 2>nul

@@ -151,10 +151,23 @@ if defined SWIFT_RUNTIME_FOUND (
 echo.
 echo Checking llama.cpp dependencies...
 set "LLAMA_BUILD=%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows"
-if exist "%LLAMA_BUILD%\ggml.dll" (
-    echo   [OK] llama.cpp x64 DLLs found
+if exist "%LLAMA_BUILD%\llama.lib" (
+    echo   [OK] llama.cpp x64 libs found
 ) else (
-    echo   [WARNING] llama.cpp x64 DLLs not found at %LLAMA_BUILD%
+    echo   llama.cpp libs not found. Building from source...
+    call "%ROOT_DIR%scripts\ci\build-llama-cpp.bat" x64 b4547 llama.cpp-build
+    if !ERRORLEVEL! NEQ 0 (
+        echo   [ERROR] llama.cpp build failed
+        set "DEPS_OK=0"
+    ) else (
+        powershell -ExecutionPolicy Bypass -File "%ROOT_DIR%scripts\ci\copy-llama-dlls.ps1" -Arch x64 -SourceDir llama.cpp-build
+        if !ERRORLEVEL! NEQ 0 (
+            echo   [ERROR] Failed to copy llama.cpp libs
+            set "DEPS_OK=0"
+        ) else (
+            echo   [OK] llama.cpp x64 libs built and installed
+        )
+    )
 )
 
 :: Summary
@@ -270,9 +283,36 @@ echo.
 
 pushd "%MOZC_SRC%"
 
+:: Check Clang version (requires 19.0.0 or newer for MSVC 14.44+ STL headers)
+"C:\Program Files\LLVM\bin\clang-cl.exe" --version > "%TEMP%\clang_ver.txt" 2>&1
+if !ERRORLEVEL! NEQ 0 (
+    echo [ERROR] clang-cl.exe が見つかりません。LLVM をインストールしてください。
+    echo   winget install LLVM.LLVM
+    popd
+    exit /b 1
+)
+for /f "tokens=3" %%v in ('findstr /c:"clang version" "%TEMP%\clang_ver.txt"') do set CLANG_VER=%%v
+for /f "tokens=1 delims=." %%m in ("!CLANG_VER!") do set CLANG_MAJOR=%%m
+if !CLANG_MAJOR! LSS 19 (
+    echo [ERROR] Clang のバージョンが古いです: !CLANG_VER!
+    echo   MSVC 14.44 の STL ヘッダは Clang 19.0.0 以上が必要です。
+    echo   以下のコマンドで LLVM をアップデートしてください:
+    echo     winget upgrade LLVM.LLVM
+    popd
+    exit /b 1
+)
+echo Clang version: %CLANG_VER% ... OK
+
 :: Check and build Qt if needed
 if not exist "third_party\qt\bin\Qt6Core.dll" (
-    echo Qt not found, running build_qt.py...
+    echo Qt not found, downloading Qt source...
+    python build_tools\update_deps.py --nollvm --nomsys2 --nondk --nosubmodules
+    if !ERRORLEVEL! NEQ 0 (
+        echo [ERROR] Qt source download failed
+        popd
+        exit /b 1
+    )
+    echo Building Qt...
     python build_tools\build_qt.py --release --confirm_license
     if !ERRORLEVEL! NEQ 0 (
         echo [ERROR] Qt build failed
@@ -289,7 +329,7 @@ python build_tools\update_deps.py --noqt --nollvm --nomsys2 --nondk --nosubmodul
 echo.
 echo Building x64 MSI installer with Bazel (this may take several minutes)...
 echo   Output is being logged to: %ROOT_DIR%build-mozc.log
-bazelisk build --config=oss_windows //win32/installer:installer_x64 > "%ROOT_DIR%build-mozc.log" 2>&1
+bazelisk build --config=oss_windows --spawn_strategy=local //win32/installer:installer_x64 > "%ROOT_DIR%build-mozc.log" 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Bazel x64 build failed
     echo   See build-mozc.log for details
