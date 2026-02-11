@@ -14,7 +14,20 @@ echo ==============================================
 echo.
 echo Cleaning...
 
-:: Clean Bazel user cache first (avoids corrupt installation errors)
+:: Shutdown Bazel server and clean workspace first (before deleting cache)
+echo Stopping Bazel server and cleaning workspace...
+pushd "%MOZC_SRC%"
+where bazelisk >nul 2>&1
+if !ERRORLEVEL! EQU 0 (
+    bazelisk shutdown 2>nul
+    bazelisk clean --expunge 2>nul
+    echo   Done.
+) else (
+    echo   Bazelisk not found, skipping.
+)
+popd
+
+:: Clean Bazel user cache (after server is stopped)
 echo Cleaning Bazel user cache...
 set "BAZEL_USER_CACHE=%USERPROFILE%\_bazel_%USERNAME%"
 if exist "%BAZEL_USER_CACHE%" (
@@ -23,18 +36,6 @@ if exist "%BAZEL_USER_CACHE%" (
 ) else (
     echo   No Bazel user cache found.
 )
-
-:: Clean Bazel cache (workspace)
-echo Cleaning Bazel workspace cache...
-pushd "%MOZC_SRC%"
-where bazelisk >nul 2>&1
-if !ERRORLEVEL! EQU 0 (
-    bazelisk clean --expunge 2>nul
-    echo   Done.
-) else (
-    echo   Bazelisk not found, skipping.
-)
-popd
 
 :: Remove bazel symlinks
 echo Removing Bazel symlinks...
