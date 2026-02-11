@@ -234,6 +234,22 @@ if not exist "%SWIFT_DLL_ARM64%" (
 copy /y "%SWIFT_DLL_ARM64%" "%OUTPUT_DIR%\azookey-engine.dll" >nul
 echo Copied: azookey-engine.dll (ARM64)
 
+:: Copy Swift resource bundles (dictionary data)
+echo Copying Swift resource bundles...
+set "SWIFT_BUILD_DIR_ARM64=%SWIFT_DIR%\.build\aarch64-unknown-windows-msvc\release"
+if not exist "%SWIFT_BUILD_DIR_ARM64%\AzooKeyKanaKanjiConverter_KanaKanjiConverterModuleWithDefaultDictionary.resources" (
+    set "SWIFT_BUILD_DIR_ARM64=%SWIFT_DIR%\.build\release"
+)
+for %%d in (
+    AzooKeyKanaKanjiConverter_KanaKanjiConverterModuleWithDefaultDictionary.resources
+    AzooKeyKanaKanjiConverter_EfficientNGram.resources
+) do (
+    if exist "!SWIFT_BUILD_DIR_ARM64!\%%d" (
+        robocopy "!SWIFT_BUILD_DIR_ARM64!\%%d" "%OUTPUT_DIR%\%%d" /E /NFL /NDL /NJH /NJS /NC /NS /NP >nul
+        echo   Copied: %%d
+    )
+)
+
 :: Note about Swift Runtime DLLs
 echo [INFO] Swift ARM64 runtime DLLs need to be obtained from ARM64 Swift installation
 echo        or downloaded from GitHub Actions artifacts

@@ -249,6 +249,19 @@ if defined SWIFT_RUNTIME (
     echo [WARNING] Swift runtime not found - DLLs may be missing
 )
 
+:: Copy Swift resource bundles (dictionary data)
+echo Copying Swift resource bundles...
+set "SWIFT_BUILD_DIR=%SWIFT_DIR%\.build\release"
+for %%d in (
+    AzooKeyKanaKanjiConverter_KanaKanjiConverterModuleWithDefaultDictionary.resources
+    AzooKeyKanaKanjiConverter_EfficientNGram.resources
+) do (
+    if exist "%SWIFT_BUILD_DIR%\%%d" (
+        robocopy "%SWIFT_BUILD_DIR%\%%d" "%OUTPUT_DIR%\%%d" /E /NFL /NDL /NJH /NJS /NC /NS /NP >nul
+        echo   Copied: %%d
+    )
+)
+
 popd
 
 echo Swift x64 DLL build completed.
