@@ -118,6 +118,21 @@ jobs:
           } else {
             throw "azookey-engine.dll not found"
           }
+          # Copy Swift resource bundles (dictionary data)
+          $buildDir = $dllPath.DirectoryName
+          $outputDir = "../../build/x64/release"
+          foreach ($bundle in @(
+            "AzooKeyKanaKanjiConverter_KanaKanjiConverterModuleWithDefaultDictionary.resources",
+            "AzooKeyKanaKanjiConverter_EfficientNGram.resources"
+          )) {
+            $src = Join-Path $buildDir $bundle
+            if (Test-Path $src) {
+              Copy-Item -Recurse -Force $src -Destination (Join-Path $outputDir $bundle)
+              Write-Host "Copied resource bundle: $bundle"
+            } else {
+              Write-Host "WARNING: Resource bundle not found: $src"
+            }
+          }
 
       - name: Copy Swift Runtime DLLs
         shell: pwsh
