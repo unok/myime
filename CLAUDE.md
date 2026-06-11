@@ -96,7 +96,6 @@ myime/
 | パス | リポジトリ (fork) | ブランチ | upstream |
 |------|------------------|---------|----------|
 | `src/AzooKeyKanaKanjiConverter/` | `unok/AzooKeyKanaKanjiConverter` | `windows-llama-patch` | `azooKey/AzooKeyKanaKanjiConverter` |
-| `src/swift-tokenizers/` | `unok/swift-tokenizers` | `windows-swift621-patch` | `huggingface/swift-transformers` |
 
 subtree操作：
 ```bash
@@ -105,13 +104,11 @@ git subtree pull --prefix=src/AzooKeyKanaKanjiConverter https://github.com/unok/
 
 # AzooKeyKanaKanjiConverter を push
 git subtree push --prefix=src/AzooKeyKanaKanjiConverter https://github.com/unok/AzooKeyKanaKanjiConverter.git windows-llama-patch
-
-# swift-tokenizers を pull
-git subtree pull --prefix=src/swift-tokenizers https://github.com/unok/swift-tokenizers.git windows-swift621-patch --squash
-
-# swift-tokenizers を push
-git subtree push --prefix=src/swift-tokenizers https://github.com/unok/swift-tokenizers.git windows-swift621-patch
 ```
+
+※ swift-tokenizers は 2026-06 に subtree を廃止（docs/adr/0002 参照）。現在は SwiftPM のリモート依存:
+- `unok/swift-tokenizers` の `windows-upstream-patch` ブランチ（upstream `huggingface/swift-transformers` + Windowsパッチ）
+- `unok/swift-huggingface` の `windows-patch` ブランチ（FileLockスタブ・fnmatchシム等 約70行）
 
 ### Mozc fork について
 - **origin**: `https://github.com/unok/mozc.git` (自分のfork)

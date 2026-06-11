@@ -92,9 +92,18 @@ fork / subtree が upstream に対して持つパッチの一覧と、各パッ�
 - [ ] Zenz リファクタリング後 (#325) のコードと vendored llama.cpp ヘッダ/DLL 世代の整合（upstream は b4846 前提）
 - [ ] subtree pull 後に `lib/windows` の DLL が復活していないか確認
 
-## 3. swift-tokenizers subtree（windows-swift621-patch）→ 廃止へ移行
+## 3. swift-tokenizers subtree（windows-swift621-patch）→ 廃止済み（2026-06-11 移行完了）
 
-**決定（2026-06-11）: fork / subtree を廃止し、upstream `huggingface/swift-transformers` 最新版へ移行する。**
+**決定・実施（2026-06-11）: fork / subtree を廃止し、upstream `huggingface/swift-transformers` 最新版へ移行した。**
+
+移行後の構成:
+
+- `src/swift-tokenizers/` subtree は削除済み
+- AzooKey の Package.swift → `unok/swift-tokenizers` の **`windows-upstream-patch`** ブランチ（upstream main `50843f9` + 2コミット: fnmatchシム + 依存差し替え）
+- swift-transformers の依存 → `unok/swift-huggingface` の **`windows-patch`** ブランチ（v0.9.0 + 1コミット: FileLockスタブ / fnmatchシム / cachesDirectoryシム）
+- 旧ブランチ `windows-swift621-patch` は履歴として fork に残置（削除しない）
+- 副作用: 依存解決で swift-collections が 1.3.0→1.6.0 に上がり、`DictionaryBuilder.swift` の `import Collections` を `import OrderedCollections` に修正（upstream azooKey/main と同一の修正のため将来の追従で収束）
+- 検証: `swift build -c release --arch x86_64` で azookey-engine.dll 生成を確認済み
 
 根拠（Windows 実機での upstream 最新 `50843f9` ビルド検証結果）:
 
