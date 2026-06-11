@@ -5,28 +5,48 @@ setlocal EnableDelayedExpansion
 :: Build llama.cpp with Vulkan support
 :: Usage: build-llama-cpp.bat <arch> <version> <output_dir>
 ::   arch: x64 or ARM64
-::   version: llama.cpp release tag (e.g., b4547)
+::   version: llama.cpp release tag (default: scripts/llama-cpp-version.env)
 ::   output_dir: directory to copy DLLs to
+::
+:: NOTE: ソースは vanilla llama.cpp ではなく Zenzai 用トークナイザパッチ
+:: (LLAMA_VOCAB_PRE_TYPE_GPT2_SMALL_JAPANESE_CHAR) 入りの fork を使う。
+:: リポジトリとバージョンの正準定義は scripts/llama-cpp-version.env
 :: ============================================
 
 set "ARCH=%~1"
 set "VERSION=%~2"
 set "OUTPUT_DIR=%~3"
 
+:: Load pinned llama.cpp source (single source of truth)
+for /f "usebackq tokens=1,* delims==" %%a in ("%~dp0..\llama-cpp-version.env") do set "%%a=%%b"
+
 if "%ARCH%"=="" set "ARCH=x64"
-if "%VERSION%"=="" set "VERSION=b4547"
+if "%VERSION%"=="" set "VERSION=%LLAMA_CPP_VERSION%"
 if "%OUTPUT_DIR%"=="" set "OUTPUT_DIR=llama.cpp-build"
 
 echo Building llama.cpp %VERSION% for %ARCH%...
 
+:: Re-clone if existing checkout doesn't match the pinned version
+if exist "llama.cpp-src" (
+    set "EXISTING_VERSION="
+    if exist "llama.cpp-src\.myime-llama-version" (
+        set /p EXISTING_VERSION=<"llama.cpp-src\.myime-llama-version"
+    )
+    if not "!EXISTING_VERSION!"=="%VERSION%" (
+        echo Existing llama.cpp-src is "!EXISTING_VERSION!", want %VERSION%. Re-cloning...
+        rmdir /s /q llama.cpp-src
+    )
+)
+
 :: Clone if not exists
 if not exist "llama.cpp-src" (
-    echo Cloning llama.cpp %VERSION%...
-    git clone --depth 1 --branch %VERSION% https://github.com/ggerganov/llama.cpp.git llama.cpp-src
+    echo Cloning llama.cpp %VERSION% from %LLAMA_CPP_REPO%...
+    git clone --depth 1 --branch %VERSION% %LLAMA_CPP_REPO% llama.cpp-src
     if !ERRORLEVEL! NEQ 0 (
         echo [ERROR] Failed to clone llama.cpp
         exit /b 1
     )
+    echo %VERSION%>"llama.cpp-src\.myime-llama-version"
 )
 
 :: Create output directory

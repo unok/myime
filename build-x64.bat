@@ -155,7 +155,8 @@ if exist "%LLAMA_BUILD%\llama.lib" (
     echo   [OK] llama.cpp x64 libs found
 ) else (
     echo   llama.cpp libs not found. Building from source...
-    call "%ROOT_DIR%scripts\ci\build-llama-cpp.bat" x64 b4547 llama.cpp-build
+    :: バージョンは scripts\llama-cpp-version.env で一元管理（第2引数を空にすると同ファイルの値を使用）
+    call "%ROOT_DIR%scripts\ci\build-llama-cpp.bat" x64 "" llama.cpp-build
     if !ERRORLEVEL! NEQ 0 (
         echo   [ERROR] llama.cpp build failed
         set "DEPS_OK=0"

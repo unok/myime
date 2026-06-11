@@ -9,7 +9,6 @@ on:
 
 env:
   SWIFT_VERSION: "6.2.1"
-  LLAMA_CPP_VERSION: "b4500"
 
 jobs:
   build:
@@ -21,6 +20,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      # LLAMA_CPP_REPO / LLAMA_CPP_VERSION の正準定義（Zenzai用パッチ入りfork）
+      - name: Load llama.cpp version
+        shell: bash
+        run: cat scripts/llama-cpp-version.env >> "$GITHUB_ENV"
 
       - name: Setup Python
         uses: actions/setup-python@v5
