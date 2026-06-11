@@ -149,8 +149,14 @@ git subtree push --prefix=src/AzooKeyKanaKanjiConverter https://github.com/unok/
 ```batch
 # Bazelビルドのみ実行
 cd mozc\src
-bazelisk build --config=oss_windows //win32/installer:installer
+bazelisk build --config=oss_windows --action_env=__COMPAT_LAYER=RunAsInvoker //win32/installer:installer_x64
 ```
+
+### UACインストーラ検出への対処
+ローカル（対話セッション）でMSIをビルドする場合、`--action_env=__COMPAT_LAYER=RunAsInvoker` が必須。
+UACの「インストーラ検出」が `build_installer.exe`（名前に install を含む未署名exe）の起動を
+error 740 (ERROR_ELEVATION_REQUIRED) で拒否し、genrule が `Permission denied (Exit 126)` で失敗するため。
+CI（非対話セッション）では検出が発動しないため不要。
 
 ## 開発タスク: 文節調整機能
 

@@ -343,7 +343,9 @@ python build_tools\update_deps.py --noqt --nollvm --nomsys2 --nondk --nosubmodul
 echo.
 echo Building x64 MSI installer with Bazel (this may take several minutes)...
 echo   Output is being logged to: %ROOT_DIR%build-mozc.log
-bazelisk build --config=oss_windows --spawn_strategy=local //win32/installer:installer_x64 > "%ROOT_DIR%build-mozc.log" 2>&1
+:: __COMPAT_LAYER=RunAsInvoker: UACの「インストーラ検出」が build_installer.exe
+:: (名前にinstallを含む未署名exe) の起動を error 740 で拒否するのを回避する
+bazelisk build --config=oss_windows --spawn_strategy=local --action_env=__COMPAT_LAYER=RunAsInvoker //win32/installer:installer_x64 > "%ROOT_DIR%build-mozc.log" 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Bazel x64 build failed
     echo   See build-mozc.log for details
