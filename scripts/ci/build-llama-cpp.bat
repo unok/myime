@@ -26,14 +26,15 @@ if "%OUTPUT_DIR%"=="" set "OUTPUT_DIR=llama.cpp-build"
 
 echo Building llama.cpp %VERSION% for %ARCH%...
 
-:: Re-clone if existing checkout doesn't match the pinned version
+:: Re-clone if existing checkout doesn't match the pinned repo+version
+set "SOURCE_ID=%LLAMA_CPP_REPO% %VERSION%"
 if exist "llama.cpp-src" (
-    set "EXISTING_VERSION="
+    set "EXISTING_SOURCE="
     if exist "llama.cpp-src\.myime-llama-version" (
-        set /p EXISTING_VERSION=<"llama.cpp-src\.myime-llama-version"
+        set /p EXISTING_SOURCE=<"llama.cpp-src\.myime-llama-version"
     )
-    if not "!EXISTING_VERSION!"=="%VERSION%" (
-        echo Existing llama.cpp-src is "!EXISTING_VERSION!", want %VERSION%. Re-cloning...
+    if not "!EXISTING_SOURCE!"=="%SOURCE_ID%" (
+        echo Existing llama.cpp-src is "!EXISTING_SOURCE!", want "%SOURCE_ID%". Re-cloning...
         rmdir /s /q llama.cpp-src
     )
 )
@@ -46,7 +47,7 @@ if not exist "llama.cpp-src" (
         echo [ERROR] Failed to clone llama.cpp
         exit /b 1
     )
-    echo %VERSION%>"llama.cpp-src\.myime-llama-version"
+    echo %SOURCE_ID%>"llama.cpp-src\.myime-llama-version"
 )
 
 :: Create output directory
