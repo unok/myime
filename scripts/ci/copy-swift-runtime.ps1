@@ -16,8 +16,10 @@ $runtimeDirs = @(
 )
 
 $foundRuntime = $null
+$searched = @()
 
 foreach ($dir in $runtimeDirs) {
+    $searched += $dir
     if (Test-Path $dir) {
         $subdirs = Get-ChildItem -Path $dir -Directory -ErrorAction SilentlyContinue
         foreach ($subdir in $subdirs) {
@@ -31,8 +33,37 @@ foreach ($dir in $runtimeDirs) {
     if ($foundRuntime) { break }
 }
 
+# Fallback 1: swiftCore.dll next to swift.exe on PATH
+# (setup-swift がツールキャッシュから復元した場合、インストーラ形式の
+#  %LOCALAPPDATA%\Programs\Swift\Runtimes が存在しないことがある)
 if (-not $foundRuntime) {
-    Write-Host "Warning: Swift Runtime not found"
+    $swift = Get-Command swift.exe -ErrorAction SilentlyContinue
+    if ($swift) {
+        $bin = Split-Path $swift.Source
+        $searched += $bin
+        if (Test-Path (Join-Path $bin "swiftCore.dll")) {
+            $foundRuntime = $bin
+        }
+    }
+}
+
+# Fallback 2: derive toolchain root from SDKROOT (hostedtoolcache layout)
+if (-not $foundRuntime -and $env:SDKROOT) {
+    $root = $env:SDKROOT -replace '\\Platforms\\.*$', ''
+    $runtimesRoot = Join-Path $root "Runtimes"
+    $searched += $runtimesRoot
+    if (Test-Path $runtimesRoot) {
+        $hit = Get-ChildItem -Path $runtimesRoot -Directory -ErrorAction SilentlyContinue |
+            ForEach-Object { Join-Path $_.FullName "usr\bin" } |
+            Where-Object { Test-Path (Join-Path $_ "swiftCore.dll") } |
+            Select-Object -First 1
+        if ($hit) { $foundRuntime = $hit }
+    }
+}
+
+if (-not $foundRuntime) {
+    Write-Host "Warning: Swift Runtime not found. Searched:"
+    $searched | ForEach-Object { Write-Host "  - $_" }
     exit 1
 }
 
