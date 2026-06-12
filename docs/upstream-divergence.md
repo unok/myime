@@ -12,7 +12,20 @@ fork / subtree が upstream に対して持つパッチの一覧と、各パッ�
 | AzooKeyKanaKanjiConverter (`unok/AzooKeyKanaKanjiConverter` windows-llama-patch) | 実質1コミット | 64コミット (~9ヶ月) | 追従を計画 |
 | swift-tokenizers (`unok/swift-tokenizers` windows-swift621-patch) | 9コミット | 128コミット (~15ヶ月) | **fork 廃止へ移行**（下記） |
 
-## 1. mozc fork（patch-myime）
+## 1. mozc fork（patch-myime → **patch-myime-next に rebase 済み、2026-06-12**）
+
+**2026-06-12 に upstream/master（`fea1ebace`, 2026-06-11時点）へ rebase 完了。** 新ブランチ `patch-myime-next`（旧 `patch-myime` はバックアップタグ `patch-myime-backup-20260612` とともに温存。master マージ時に改名予定）。
+
+rebase 結果: fork 独自コミットは **14 → 11** にスリム化（27ファイル, +2272/-15 程度）。
+
+- 破棄した陳腐化パッチ: rules_cc/rules_python バンプ、ARM64 関連2件（棚上げ）、**rules_swift 3.4.1 pin（rules_apple 4.5.2 が 3.5.0 を要求するため不要化）**、.bazelrc の32bitツールチェーン削除（upstream の x86 パッチ復活と整合させ撤回）
+- 破棄したノイズ: converter.cc の LOG、session.cc/engine_converter.cc/win32_ipc.cc の実質無変更・トレース
+- 破棄した暫定対応: wxs の Windows バージョンチェック無効化（upstream の条件 build≥17763 は Insider でも通過するため不要）
+- 新規追従対応: `ImmutableConverterInterface::Convert` の **ConversionOptions API 移行**（旧 ConversionRequest、実装は引数未使用のため機械的置換）
+- installer は upstream の universal installer 対応構造（単一 genrule + `build_msi`）に移行し、AzooKey DLL/リソースバンドル/`--azookey_dll_dir` をグラフト。**upstream が build_installer→build_msi 改名で UAC インストーラ検出問題を解決済み**（myime 側の RunAsInvoker 回避は無害だが原理的に不要に）
+- 検証: `Mozc_x64.msi` 生成成功（2026-06-12、Bazel 9.0.2）
+
+以下は rebase 前（2026-06-11 調査時点）の記録。
 
 分岐点: `348a49c71`（2025-12-25）。upstream/master は `9afbd9860` まで進行。
 
