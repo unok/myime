@@ -7,7 +7,8 @@
 #include <string>
 
 // Function pointer types
-typedef void (*InitializeFunc)(const char*, const char*);
+// NOTE: Initialize は成功=1/失敗=0 を返す (azookey-engine.dll の現契約)
+typedef int (*InitializeFunc)(const char*, const char*);
 typedef void (*ShutdownFunc)();
 typedef void (*AppendTextFunc)(const char*);
 typedef void (*ClearTextFunc)();
@@ -133,8 +134,13 @@ int main() {
 
     printf("Calling Initialize(nullptr, nullptr)...\n");
     fflush(stdout);
-    Initialize(nullptr, nullptr);
-    test_result("Initialize called", true);
+    const int init_ok = Initialize(nullptr, nullptr);
+    test_result("Initialize succeeded", init_ok != 0);
+    if (!init_ok) {
+        printf("\n[ABORT] Engine initialization failed\n");
+        FreeLibrary(g_hDll);
+        return 1;
+    }
 
     // ===== Phase 5: Zenzai Configuration =====
     printf("\n--- Phase 5: Zenzai Configuration ---\n");

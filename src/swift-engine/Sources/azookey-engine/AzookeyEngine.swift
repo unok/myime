@@ -120,6 +120,14 @@ public func initialize(_ dictionaryPath: UnsafePointer<CChar>?, _ memoryPath: Un
     engineLock.lock()
     defer { engineLock.unlock() }
 
+    // 既に初期化済みなら設定の上書き・検証は行わず参照カウントだけ増やす。
+    // (ReloadModules 等の多重 Initialize で、正常稼働中のエンジンが
+    //  新しい引数の検証失敗により誤って「失敗」扱いになるのを防ぐ)
+    if converter != nil {
+        initCount += 1
+        return 1
+    }
+
     if let dictPath = dictionaryPath {
         config.dictionaryPath = String(cString: dictPath)
     }
@@ -141,17 +149,15 @@ public func initialize(_ dictionaryPath: UnsafePointer<CChar>?, _ memoryPath: Un
         }
     }
 
-    if converter == nil {
-        if config.dictionaryPath.isEmpty {
-            converter = KanaKanjiConverter.withDefaultDictionary()
-        } else {
-            let dictURL = URL(fileURLWithPath: config.dictionaryPath)
-            let dicdataStore = DicdataStore(dictionaryURL: dictURL)
-            converter = KanaKanjiConverter(dicdataStore: dicdataStore)
-        }
-        composingText = ComposingText()
-        currentCandidates = []
+    if config.dictionaryPath.isEmpty {
+        converter = KanaKanjiConverter.withDefaultDictionary()
+    } else {
+        let dictURL = URL(fileURLWithPath: config.dictionaryPath)
+        let dicdataStore = DicdataStore(dictionaryURL: dictURL)
+        converter = KanaKanjiConverter(dicdataStore: dicdataStore)
     }
+    composingText = ComposingText()
+    currentCandidates = []
 
     initCount += 1
     return converter != nil ? 1 : 0
