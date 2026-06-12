@@ -4,6 +4,10 @@ name: Build arm64 (disabled)
 # - Bazel issue #22164: C++ toolchain resolution broken on ARM64 Windows
 # - Swift ARM64 cross-compilation not supported
 # Re-enable when these issues are resolved.
+#
+# 注意 (2026-06): mozc の upstream rebase により installer_arm64 ターゲットは
+# 廃止済み (universal installer 方式に移行)。再開時はこの workflow の
+# ターゲット名・MSI パスの再設計が必要。docs/upstream-divergence.md 参照。
 
 on:
   workflow_dispatch:  # Manual trigger only

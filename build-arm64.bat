@@ -4,6 +4,12 @@ setlocal EnableDelayedExpansion
 :: ==============================================
 :: MyIME Build Script - ARM64
 :: ==============================================
+:: !! 注意: ARM64 は現在棚上げ中で、このスクリプトは動作しません !!
+:: mozc の upstream rebase (2026-06) で installer_arm64 ターゲットは廃止され、
+:: universal installer 方式 (//:enable_win_universal_installer) に変わりました。
+:: 再開時は本スクリプトの Bazel ターゲットと MSI パスの再設計が必要です。
+:: 詳細: docs/upstream-divergence.md「ARM64 の扱い」
+::
 :: This script builds the ARM64 version:
 :: 1. Check dependencies
 :: 2. Build Swift DLL (cross-compile from x64)

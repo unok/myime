@@ -27,7 +27,7 @@ Mozc（C++ / TSF）をUIフレームワークとし、かな漢字変換を Azoo
 └──────────────────────────────────────────────────┘
 ```
 
-- **動的ロード**: Mozc は DLL に静的リンクせず、実行時に `LoadLibraryW` + `GetProcAddress` で取得する（`azookey_immutable_converter.cc` の `AzooKeyDllLoader`）。Mozc 単体ビルド用に `converter/azookey_stub.cc` がスタブを提供。
+- **動的ロード**: Mozc は DLL に静的リンクせず、実行時に `LoadLibraryW` + `GetProcAddress` で取得する（`azookey_immutable_converter.cc` の `AzooKeyDllLoader`）。DLL ロード失敗時は `NoOpImmutableConverter` にフォールバックするため、Mozc 単体でもビルド・起動可能。
 - **初期化失敗時**: `NoOpImmutableConverter` にフォールバックし、変換機能のみ無効化される（IME自体は落ちない）。
 
 ## C FFI 関数一覧
@@ -49,7 +49,6 @@ Mozc（C++ / TSF）をUIフレームワークとし、かな漢字変換を Azoo
 | Zenzai制御 | `SetZenzaiEnabled(bool)` / `SetZenzaiInferenceLimit(n)` / `SetZenzaiWeightPath(path)` | Zenzai 設定 |
 | | `GetZenzaiStatus()` | `{enabled, weightPath, inferenceLimit, modelExists, active}` の JSON |
 | メモリ | `FreeString(ptr)` | 戻り値文字列の解放 |
-| レガシー | `azookey_create/destroy/convert/free_string` | 旧 `@_cdecl` API（互換維持） |
 
 ### GetCandidates の JSON 形式
 
@@ -79,7 +78,6 @@ Mozc（C++ / TSF）をUIフレームワークとし、かな漢字変換を Azoo
 | `mozc/src/engine/engine.cc:108-135` | `ImmutableConverter` を AzooKey に差し替え。失敗時 NoOp フォールバック |
 | `mozc/src/converter/azookey_immutable_converter.cc/.h` | DLLロード・JSONパース・セグメント処理の本体（新規ファイル, 867行） |
 | `mozc/src/converter/engine_config.h` | エンジン種別（常時 AZOOKEY）と Zenzai モデルパス解決（新規, ヘッダオンリー） |
-| `mozc/src/converter/azookey_stub.cc` | DLL なしビルド用スタブ（新規） |
 | `mozc/src/server/mozc_server_main.cc` | 起動時の Zenzai モデル存在チェック → ダウンロード案内 |
 | `mozc/src/gui/zenzai_download/` | `mozc_tool --mode=zenzai_download` ダイアログ（新規） |
 
@@ -90,7 +88,7 @@ Mozc（C++ / TSF）をUIフレームワークとし、かな漢字変換を Azoo
 1. **依存チェック**: Swift 6.2.1+ / VS2022 / Bazelisk / Windows SDK / llama.cpp ライブラリ（`src/AzooKeyKanaKanjiConverter/lib/windows/`、なければ `scripts/ci/build-llama-cpp.bat` でソースビルド）
 2. **Swift DLL ビルド**: `swift build -c release` → `azookey-engine.dll` + Swift Runtime DLL群 + リソースバンドル（辞書データ）を `build/x64/release/` へコピー
 3. **llama.cpp DLL コピー**: `ggml*.dll`, `llama.dll` 等を同上へ
-4. **Mozc ビルド**: `bazelisk build --config=oss_windows //win32/installer:installer_x64` → `Mozc_X64.msi`
+4. **Mozc ビルド**: `bazelisk build --config=oss_windows //win32/installer:installer_x64` → `bazel-bin/win32/installer/Mozc_x64.msi`
 
 Bazel との接続:
 

@@ -113,9 +113,9 @@ public func appendText(_ input: UnsafePointer<CChar>?) {
 
 @_silgen_name("RemoveText")
 public func removeText(_ count: Int32) {
-    for _ in 0..<count {
-        composingText.deleteBackwardFromCursorPosition(count: 1)
-    }
+    // 負数や0で Range 生成の fatalError を起こさないよう防御（C ABI 越しの外部入力）
+    guard count > 0 else { return }
+    composingText.deleteBackwardFromCursorPosition(count: Int(count))
 }
 
 @_silgen_name("MoveCursor")
@@ -256,62 +256,3 @@ public func freeString(_ str: UnsafePointer<CChar>?) {
     free(UnsafeMutablePointer(mutating: str))
 }
 
-// MARK: - Test API wrapper functions
-
-@_cdecl("azookey_create")
-public func azookey_create(_ configJson: UnsafePointer<CChar>?) -> UnsafeMutableRawPointer? {
-    guard let configJson = configJson else { return nil }
-
-    let jsonString = String(cString: configJson)
-
-    // Parse JSON configuration
-    guard let jsonData = jsonString.data(using: .utf8),
-          let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
-        return nil
-    }
-
-    // Update configuration
-    if let dictPath = json["dictionaryPath"] as? String {
-        config.dictionaryPath = dictPath
-    }
-    if let memPath = json["memoryPath"] as? String {
-        config.memoryPath = memPath
-    }
-    if let zenzaiEnabled = json["zenzaiEnabled"] as? Bool {
-        config.zenzaiEnabled = zenzaiEnabled
-    }
-    if let zenzaiLimit = json["zenzaiInferenceLimit"] as? Int {
-        config.zenzaiInferenceLimit = zenzaiLimit
-    }
-    if let zenzaiWeight = json["zenzaiWeightPath"] as? String {
-        config.zenzaiWeightPath = zenzaiWeight
-    }
-
-    // Initialize converter
-    initialize(nil, nil)
-
-    // Return a dummy handle (not nil to indicate success)
-    return UnsafeMutableRawPointer(bitPattern: 1)
-}
-
-@_cdecl("azookey_destroy")
-public func azookey_destroy(_ engine: UnsafeMutableRawPointer?) {
-    shutdown()
-}
-
-@_cdecl("azookey_convert")
-public func azookey_convert(_ engine: UnsafeMutableRawPointer?, _ input: UnsafePointer<CChar>?) -> UnsafePointer<CChar>? {
-    guard let input = input else { return nil }
-
-    // Clear existing text and append new input
-    clearText()
-    appendText(input)
-
-    // Get conversion result
-    return getComposedText()
-}
-
-@_cdecl("azookey_free_string")
-public func azookey_free_string(_ str: UnsafePointer<CChar>?) {
-    freeString(str)
-}
