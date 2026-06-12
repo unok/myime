@@ -27,7 +27,7 @@ Mozc（C++ / TSF）をUIフレームワークとし、かな漢字変換を Azoo
 └──────────────────────────────────────────────────┘
 ```
 
-- **動的ロード**: Mozc は DLL に静的リンクせず、実行時に `LoadLibraryW` + `GetProcAddress` で取得する（`azookey_immutable_converter.cc` の `AzooKeyDllLoader`）。Mozc 単体ビルド用に `converter/azookey_stub.cc` がスタブを提供。
+- **動的ロード**: Mozc は DLL に静的リンクせず、実行時に `LoadLibraryW` + `GetProcAddress` で取得する（`azookey_immutable_converter.cc` の `AzooKeyDllLoader`）。DLL ロード失敗時は `NoOpImmutableConverter` にフォールバックするため、Mozc 単体でもビルド・起動可能。
 - **初期化失敗時**: `NoOpImmutableConverter` にフォールバックし、変換機能のみ無効化される（IME自体は落ちない）。
 
 ## C FFI 関数一覧
@@ -78,7 +78,6 @@ Mozc（C++ / TSF）をUIフレームワークとし、かな漢字変換を Azoo
 | `mozc/src/engine/engine.cc:108-135` | `ImmutableConverter` を AzooKey に差し替え。失敗時 NoOp フォールバック |
 | `mozc/src/converter/azookey_immutable_converter.cc/.h` | DLLロード・JSONパース・セグメント処理の本体（新規ファイル, 867行） |
 | `mozc/src/converter/engine_config.h` | エンジン種別（常時 AZOOKEY）と Zenzai モデルパス解決（新規, ヘッダオンリー） |
-| `mozc/src/converter/azookey_stub.cc` | DLL なしビルド用スタブ（新規） |
 | `mozc/src/server/mozc_server_main.cc` | 起動時の Zenzai モデル存在チェック → ダウンロード案内 |
 | `mozc/src/gui/zenzai_download/` | `mozc_tool --mode=zenzai_download` ダイアログ（新規） |
 

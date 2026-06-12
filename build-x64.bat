@@ -181,7 +181,7 @@ if "%DEPS_OK%"=="0" (
     echo ==============================================
     echo [ERROR] Missing dependencies. Please install them and try again.
     echo ==============================================
-    exit /b 1
+    goto :fail
 )
 
 echo All dependencies found!
@@ -208,16 +208,14 @@ echo Building Swift package with Zenzai support (this may take a few minutes)...
 swift build -c release --arch x86_64
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Swift build failed
-    popd
-    exit /b 1
+    goto :fail_pop2
 )
 
 :: Copy DLL to output directory
 set "SWIFT_DLL=%SWIFT_DIR%\.build\release\azookey-engine.dll"
 if not exist "%SWIFT_DLL%" (
     echo [ERROR] azookey-engine.dll not found in build output
-    popd
-    exit /b 1
+    goto :fail_pop2
 )
 
 copy /y "%SWIFT_DLL%" "%OUTPUT_DIR%\azookey-engine.dll" >nul
@@ -226,7 +224,7 @@ echo Copied: azookey-engine.dll
 :: Copy Swift runtime libraries
 :: DLLリストと探索ロジックは scripts\ci\copy-swift-runtime.ps1 に一元化
 :: (フォールバック探索: インストーラ形式 / swift.exe隣接 / SDKROOT由来)
-powershell -ExecutionPolicy Bypass -File "%ROOT_DIR%scripts\ci\copy-swift-runtime.ps1" -OutputDir "%OUTPUT_DIR%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%scripts\ci\copy-swift-runtime.ps1" -OutputDir "%OUTPUT_DIR%"
 if !ERRORLEVEL! NEQ 0 (
     echo [WARNING] Swift runtime not found - DLLs may be missing
 )
@@ -283,8 +281,7 @@ pushd "%MOZC_SRC%"
 if !ERRORLEVEL! NEQ 0 (
     echo [ERROR] clang-cl.exe が見つかりません。LLVM をインストールしてください。
     echo   winget install LLVM.LLVM
-    popd
-    exit /b 1
+    goto :fail_pop2
 )
 for /f "tokens=3" %%v in ('findstr /c:"clang version" "%TEMP%\clang_ver.txt"') do set CLANG_VER=%%v
 for /f "tokens=1 delims=." %%m in ("!CLANG_VER!") do set CLANG_MAJOR=%%m
@@ -293,8 +290,7 @@ if !CLANG_MAJOR! LSS 19 (
     echo   MSVC 14.44 の STL ヘッダは Clang 19.0.0 以上が必要です。
     echo   以下のコマンドで LLVM をアップデートしてください:
     echo     winget upgrade LLVM.LLVM
-    popd
-    exit /b 1
+    goto :fail_pop2
 )
 echo Clang version: %CLANG_VER% ... OK
 
@@ -304,15 +300,13 @@ if not exist "third_party\qt\bin\Qt6Core.dll" (
     python build_tools\update_deps.py --nollvm --nomsys2 --nondk --nosubmodules
     if !ERRORLEVEL! NEQ 0 (
         echo [ERROR] Qt source download failed
-        popd
-        exit /b 1
+        goto :fail_pop2
     )
     echo Building Qt...
     python build_tools\build_qt.py --release --confirm_license
     if !ERRORLEVEL! NEQ 0 (
         echo [ERROR] Qt build failed
-        popd
-        exit /b 1
+        goto :fail_pop2
     )
 )
 
@@ -330,8 +324,7 @@ bazelisk build --config=oss_windows --spawn_strategy=local //win32/installer:ins
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Bazel x64 build failed
     echo   See build-mozc.log for details
-    popd
-    exit /b 1
+    goto :fail_pop2
 )
 echo   Bazel build completed successfully
 
@@ -343,8 +336,7 @@ if exist "%MSI_PATH%" (
     echo x64 MSI installer created: %ROOT_DIR%Mozc_x64.msi
 ) else (
     echo [ERROR] MSI not found at expected path: %MSI_PATH%
-    popd
-    exit /b 1
+    goto :fail_pop2
 )
 
 popd
@@ -367,3 +359,10 @@ echo.
 popd
 endlocal
 exit /b 0
+
+:: 失敗時はディレクトリスタックを巻き戻して呼び出し元の cwd を保つ
+:fail_pop2
+popd
+:fail
+popd
+exit /b 1

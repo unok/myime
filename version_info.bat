@@ -257,7 +257,11 @@ echo [Bazel Dependencies (MODULE.bazel)]
 echo ----------------------------------------------
 
 :: ハードコードすると MODULE.bazel 更新時に乖離して嘘をつくため、動的に抽出する
-powershell -NoProfile -Command "$t = Get-Content -Raw '%~dp0mozc\src\MODULE.bazel'; foreach ($m in [regex]::Matches($t, 'bazel_dep\(\s*name\s*=\s*\"([^\"]+)\"\s*,\s*version\s*=\s*\"([^\"]+)\"')) { '  {0,-20} {1}' -f ($m.Groups[1].Value + ':'), $m.Groups[2].Value }"
+if exist "%~dp0mozc\src\MODULE.bazel" (
+    powershell -NoProfile -Command "$t = Get-Content -Raw '%~dp0mozc\src\MODULE.bazel'; foreach ($m in [regex]::Matches($t, 'bazel_dep\(\s*name\s*=\s*\"([^\"]+)\"\s*,\s*version\s*=\s*\"([^\"]+)\"')) { '  {0,-20} {1}' -f ($m.Groups[1].Value + ':'), $m.Groups[2].Value }"
+) else (
+    echo   [N/A] mozc\src\MODULE.bazel not found - run: git submodule update --init
+)
 
 echo.
 

@@ -63,7 +63,7 @@ Windows の「設定」→「アプリ」→「Mozc」からアンインスト�
 | スクリプト | 説明 |
 |-----------|------|
 | `build-x64.bat` | x64 用 Swift DLL + Mozc MSI をビルド |
-| `build-arm64.bat` | ARM64 用 Swift DLL + Mozc MSI をビルド |
+| `build-arm64.bat` | ARM64 用ビルド（**現在棚上げ中・動作しません**） |
 | `build-mozc.bat` | Mozc のみビルド（Swift DLL はスキップ） |
 | `clean.bat` | ビルド成果物をクリーンアップ |
 | `restart-ime.bat` | IME プロセスを再起動 |
