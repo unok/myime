@@ -34,23 +34,28 @@ Mozc（C++ / TSF）をUIフレームワークとし、かな漢字変換を Azoo
 
 `src/swift-engine/Sources/azookey-engine/AzookeyEngine.swift` でエクスポート。文字列の戻り値は malloc 済みで、呼び出し側が `FreeString` で解放する。
 
+全エクスポート関数は DLL 内部のロックで排他される（Mozc 側から複数スレッドで呼ばれても安全）。
+
 | 分類 | 関数 | 役割 |
 |---|---|---|
-| 初期化 | `Initialize(dictionaryPath, memoryPath)` | KanaKanjiConverter 生成 |
-| | `Shutdown()` | 状態クリア |
+| 初期化 | `Initialize(dictionaryPath, memoryPath) -> Int32` | KanaKanjiConverter 生成。成功=1/失敗=0。参照カウント方式（ReloadModules で新旧インスタンスが交差しても安全） |
+| | `Shutdown()` | 参照カウントを減らし、0 になったら状態クリア |
 | | `LoadConfig(configPath)` | JSON設定読み込み（辞書・メモリ・Zenzai） |
-| テキスト操作 | `AppendText(utf8)` | ひらがなをカーソル位置に追加（`inputStyle: .direct`） |
+| **変換（主経路）** | `ConvertText(key, allowLearning) -> JSON` | **単発変換API**。key（UTF-8ひらがな）の候補リストを1呼び出しで返す。Mozc の `Convert()` はこれのみ使用。`allowLearning=0` でシークレットモード時の学習を抑止 |
+| テキスト操作（補助） | `AppendText(utf8)` | ひらがなをカーソル位置に追加（`inputStyle: .direct`） |
 | | `RemoveText(count)` / `ShrinkText()` | 文字削除 |
 | | `MoveCursor(offset)` | カーソル移動 |
 | | `ClearText()` | 構成テキストと候補をリセット |
-| 変換 | `GetComposedText()` | 最優候補の文字列 |
-| | `GetCandidates()` | 候補リストを JSON 配列で返す（下記） |
-| | `SelectCandidate(index)` | 候補確定 |
+| 変換（補助） | `GetComposedText()` | 最優候補の文字列 |
+| | `GetCandidates()` | 現在の構成テキストの候補リストを JSON で返す |
+| | `SelectCandidate(index)` | 候補確定（学習有効時は履歴に反映） |
 | Zenzai制御 | `SetZenzaiEnabled(bool)` / `SetZenzaiInferenceLimit(n)` / `SetZenzaiWeightPath(path)` | Zenzai 設定 |
 | | `GetZenzaiStatus()` | `{enabled, weightPath, inferenceLimit, modelExists, active}` の JSON |
 | メモリ | `FreeString(ptr)` | 戻り値文字列の解放 |
 
-### GetCandidates の JSON 形式
+**ユーザー学習**: `memory_path`（`%APPDATA%\Mozc\azookey_memory`、`engine_config.h` の `GetAzooKeyMemoryPath()`）が渡されると有効。シークレットモード（`enable_user_history_for_conversion=false`）のリクエストは学習されない。
+
+### ConvertText / GetCandidates の JSON 形式
 
 ```json
 [{"text": "漢字", "correspondingCount": 3}, ...]
@@ -62,7 +67,7 @@ Mozc（C++ / TSF）をUIフレームワークとし、かな漢字変換を Azoo
 
 1. ひらがな入力 → インライン候補表示。スペースで変換モード（CONVERSION）へ。
 2. `Converter::Convert()` → `AzooKeyImmutableConverter::Convert()`（`azookey_immutable_converter.cc:577`）。
-3. **セグメントごと**に `ClearText` → `AppendText(segment->key())` → `GetCandidates()` → `ParseCandidatesForSegment()`。
+3. **セグメントごと**に `ConvertText(segment->key(), allowLearning)` → `ParseCandidatesForSegment()`（単発APIのため呼び出し間に他スレッドの操作が割り込まない）。
 4. `ParseCandidatesForSegment` での `correspondingCount` 処理（キー長 N 文字に対して）:
    - `== N`: そのまま採用
    - `< N`: 不足分のひらがなを末尾補完（例: 候補「漢字」+残り「あ」→「漢字あ」）
