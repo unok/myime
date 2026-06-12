@@ -17,6 +17,10 @@ set "MOZC_SRC=%ROOT_DIR%mozc\src"
 set "BUILD_DIR=%ROOT_DIR%build"
 set "OUTPUT_DIR=%BUILD_DIR%\x64\release"
 
+:: リポジトリルート以外から起動された場合でも、相対パス前提の処理
+:: (llama.cpp-src/llama.cpp-build の生成先など) が破綻しないようにする
+pushd "%ROOT_DIR%"
+
 echo ==============================================
 echo MyIME Build Script - x64
 echo ==============================================
@@ -220,33 +224,10 @@ copy /y "%SWIFT_DLL%" "%OUTPUT_DIR%\azookey-engine.dll" >nul
 echo Copied: azookey-engine.dll
 
 :: Copy Swift runtime libraries
-set "SWIFT_RUNTIME="
-for %%p in ("%LocalAppData%\Programs\Swift\Runtimes" "%ProgramFiles%\Swift\Runtimes" "%SystemDrive%\Library\Swift\Runtimes") do (
-    if exist "%%~p" (
-        for /d %%t in ("%%~p\*") do (
-            if exist "%%t\usr\bin\swiftCore.dll" (
-                set "SWIFT_RUNTIME=%%t\usr\bin"
-                goto :swift_runtime_found
-            )
-        )
-    )
-)
-:swift_runtime_found
-if defined SWIFT_RUNTIME (
-    echo Copying Swift runtime libraries from: %SWIFT_RUNTIME%
-    copy /y "%SWIFT_RUNTIME%\swiftCore.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\swiftCRT.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\swiftDispatch.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\swift_Concurrency.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\swiftWinSDK.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\Foundation.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\FoundationEssentials.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\FoundationInternationalization.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\_FoundationICU.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\BlocksRuntime.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\dispatch.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    echo   Copied Swift runtime DLLs
-) else (
+:: DLLリストと探索ロジックは scripts\ci\copy-swift-runtime.ps1 に一元化
+:: (フォールバック探索: インストーラ形式 / swift.exe隣接 / SDKROOT由来)
+powershell -ExecutionPolicy Bypass -File "%ROOT_DIR%scripts\ci\copy-swift-runtime.ps1" -OutputDir "%OUTPUT_DIR%"
+if !ERRORLEVEL! NEQ 0 (
     echo [WARNING] Swift runtime not found - DLLs may be missing
 )
 
@@ -277,7 +258,7 @@ echo.
 set "LLAMA_BUILD=%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows"
 if exist "%LLAMA_BUILD%" (
     echo Copying x64 llama.cpp DLLs...
-    for %%f in (ggml.dll ggml-base.dll ggml-cpu.dll ggml-vulkan.dll llama.dll llava_shared.dll mtmd.dll) do (
+    for %%f in (ggml.dll ggml-base.dll ggml-cpu.dll ggml-vulkan.dll llama.dll) do (
         if exist "%LLAMA_BUILD%\%%f" (
             copy /y "%LLAMA_BUILD%\%%f" "%OUTPUT_DIR%\" >nul
             echo   Copied: %%f
@@ -343,9 +324,9 @@ python build_tools\update_deps.py --noqt --nollvm --nomsys2 --nondk --nosubmodul
 echo.
 echo Building x64 MSI installer with Bazel (this may take several minutes)...
 echo   Output is being logged to: %ROOT_DIR%build-mozc.log
-:: __COMPAT_LAYER=RunAsInvoker: UACの「インストーラ検出」が build_installer.exe
-:: (名前にinstallを含む未署名exe) の起動を error 740 で拒否するのを回避する
-bazelisk build --config=oss_windows --spawn_strategy=local --action_env=__COMPAT_LAYER=RunAsInvoker //win32/installer:installer_x64 > "%ROOT_DIR%build-mozc.log" 2>&1
+:: NOTE: 以前あった UACインストーラ検出回避 (__COMPAT_LAYER=RunAsInvoker) は、
+:: upstream がビルドツールを build_msi に改名して解決済みのため削除 (mozc#1519)
+bazelisk build --config=oss_windows --spawn_strategy=local //win32/installer:installer_x64 > "%ROOT_DIR%build-mozc.log" 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Bazel x64 build failed
     echo   See build-mozc.log for details
@@ -360,6 +341,10 @@ if exist "%MSI_PATH%" (
     copy /y "%MSI_PATH%" "%ROOT_DIR%Mozc_x64.msi" >nul
     echo.
     echo x64 MSI installer created: %ROOT_DIR%Mozc_x64.msi
+) else (
+    echo [ERROR] MSI not found at expected path: %MSI_PATH%
+    popd
+    exit /b 1
 )
 
 popd
@@ -379,5 +364,6 @@ echo   2. Run Mozc_x64.msi as administrator
 echo   3. Restart your computer
 echo.
 
+popd
 endlocal
 exit /b 0

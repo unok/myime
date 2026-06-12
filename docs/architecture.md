@@ -49,7 +49,6 @@ Mozc（C++ / TSF）をUIフレームワークとし、かな漢字変換を Azoo
 | Zenzai制御 | `SetZenzaiEnabled(bool)` / `SetZenzaiInferenceLimit(n)` / `SetZenzaiWeightPath(path)` | Zenzai 設定 |
 | | `GetZenzaiStatus()` | `{enabled, weightPath, inferenceLimit, modelExists, active}` の JSON |
 | メモリ | `FreeString(ptr)` | 戻り値文字列の解放 |
-| レガシー | `azookey_create/destroy/convert/free_string` | 旧 `@_cdecl` API（互換維持） |
 
 ### GetCandidates の JSON 形式
 
@@ -90,7 +89,7 @@ Mozc（C++ / TSF）をUIフレームワークとし、かな漢字変換を Azoo
 1. **依存チェック**: Swift 6.2.1+ / VS2022 / Bazelisk / Windows SDK / llama.cpp ライブラリ（`src/AzooKeyKanaKanjiConverter/lib/windows/`、なければ `scripts/ci/build-llama-cpp.bat` でソースビルド）
 2. **Swift DLL ビルド**: `swift build -c release` → `azookey-engine.dll` + Swift Runtime DLL群 + リソースバンドル（辞書データ）を `build/x64/release/` へコピー
 3. **llama.cpp DLL コピー**: `ggml*.dll`, `llama.dll` 等を同上へ
-4. **Mozc ビルド**: `bazelisk build --config=oss_windows //win32/installer:installer_x64` → `Mozc_X64.msi`
+4. **Mozc ビルド**: `bazelisk build --config=oss_windows //win32/installer:installer_x64` → `bazel-bin/win32/installer/Mozc_x64.msi`
 
 Bazel との接続:
 

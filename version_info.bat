@@ -223,7 +223,7 @@ echo ----------------------------------------------
 set "LLAMA_DIR=%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows"
 if exist "%LLAMA_DIR%" (
     echo   Path: %LLAMA_DIR%
-    for %%f in (ggml.dll ggml-base.dll ggml-cpu.dll ggml-vulkan.dll llama.dll llava_shared.dll mtmd.dll) do (
+    for %%f in (ggml.dll ggml-base.dll ggml-cpu.dll ggml-vulkan.dll llama.dll) do (
         if exist "%LLAMA_DIR%\%%f" (
             echo     [OK] %%f
         ) else (
@@ -256,23 +256,8 @@ echo.
 echo [Bazel Dependencies (MODULE.bazel)]
 echo ----------------------------------------------
 
-echo   abseil-cpp:       20250814.0
-echo   protobuf:         32.0
-echo   googletest:       1.17.0
-echo   platforms:        1.0.0
-echo   bazel_skylib:     1.8.1
-echo   rules_pkg:        1.1.0
-echo   rules_python:     1.7.0
-echo   rules_apple:      4.1.2
-echo   apple_support:    1.24.2
-echo   rules_swift:      3.4.1
-echo   rules_cc:         0.2.16
-echo   rules_android_ndk: 0.1.3
-echo   WIL:              1.0.230629.1
-echo   WiX:              5.0.2
-echo   Material Icons:   4.0.0
-echo   JA Usage Dict:    2025-01-25
-echo   Zip Code Data:    2025-08-30
+:: ハードコードすると MODULE.bazel 更新時に乖離して嘘をつくため、動的に抽出する
+powershell -NoProfile -Command "$t = Get-Content -Raw '%~dp0mozc\src\MODULE.bazel'; foreach ($m in [regex]::Matches($t, 'bazel_dep\(\s*name\s*=\s*\"([^\"]+)\"\s*,\s*version\s*=\s*\"([^\"]+)\"')) { '  {0,-20} {1}' -f ($m.Groups[1].Value + ':'), $m.Groups[2].Value }"
 
 echo.
 

@@ -11,31 +11,17 @@ let package = Package(
             targets: ["azookey-engine"]
         ),
     ],
-    traits: [
-        .trait(name: "Zenzai"),
-        .trait(name: "ZenzaiCPU"),
-        .default(enabledTraits: [])
-    ],
     dependencies: [
         .package(path: "../AzooKeyKanaKanjiConverter", traits: ["Zenzai"]),
     ],
     targets: [
         .target(
-            name: "ffi",
-            dependencies: [],
-            path: "Sources/ffi",
-            sources: ["ffi.c"],
-            publicHeadersPath: "include"
-        ),
-        .target(
             name: "azookey-engine",
             dependencies: [
                 .product(name: "KanaKanjiConverterModuleWithDefaultDictionary", package: "AzooKeyKanaKanjiConverter"),
-                "ffi"
             ],
             path: "Sources/azookey-engine",
             swiftSettings: [
-                .enableExperimentalFeature("Extern"),
                 .interoperabilityMode(.Cxx)
             ],
             linkerSettings: [
