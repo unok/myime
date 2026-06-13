@@ -297,7 +297,7 @@ echo Clang version: %CLANG_VER% ... OK
 :: Check and build Qt if needed
 if not exist "third_party\qt\bin\Qt6Core.dll" (
     echo Qt not found, downloading Qt source...
-    python build_tools\update_deps.py --nollvm --nomsys2 --nondk --nosubmodules
+    python build_tools\update_deps.py --nollvm --nomsys2 --nondk
     if !ERRORLEVEL! NEQ 0 (
         echo [ERROR] Qt source download failed
         goto :fail_pop2
@@ -312,7 +312,7 @@ if not exist "third_party\qt\bin\Qt6Core.dll" (
 
 :: Run update_deps.py if needed
 echo Checking dependencies...
-python build_tools\update_deps.py --noqt --nollvm --nomsys2 --nondk --nosubmodules
+python build_tools\update_deps.py --noqt --nollvm --nomsys2 --nondk
 
 :: Build MSI installer with Bazel
 echo.
