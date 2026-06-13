@@ -42,6 +42,18 @@ if not exist "%MSI%" (
     exit /b 1
 )
 echo 使用する MSI: %MSI%
+
+:: bazel-bin はシンボリックリンクで、その先は読み取り専用の Bazel キャッシュ。
+:: Windows Installer サービス(SYSTEM)がリンク経由だと開けず error 1619 になるため、
+:: 実体ファイルとして安定した場所へコピーしてからインストールする。
+set "MSI_LOCAL=%SystemRoot%\Temp\Mozc_x64_dev.msi"
+copy /y "%MSI%" "%MSI_LOCAL%" >nul 2>&1
+if not exist "%MSI_LOCAL%" (
+    echo [ERROR] MSI のコピーに失敗しました: %MSI_LOCAL%
+    pause
+    exit /b 1
+)
+echo インストール元: %MSI_LOCAL%
 echo.
 
 :: --- IME サービス/プロセスを停止してファイルロックを解放 ---
@@ -58,11 +70,11 @@ ping -n 3 127.0.0.1 >nul
 
 :: --- 再インストール (REINSTALLMODE=vamus で全ファイル強制上書き) ---
 echo MSI を再インストールしています...
-msiexec /i "%MSI%" /qb REINSTALL=ALL REINSTALLMODE=vamus
+msiexec /i "%MSI_LOCAL%" /qb REINSTALL=ALL REINSTALLMODE=vamus
 set "RC=%ERRORLEVEL%"
 if "%RC%"=="1638" (
     echo REINSTALL 不可。通常インストールで再試行します...
-    msiexec /i "%MSI%" /qb
+    msiexec /i "%MSI_LOCAL%" /qb
     set "RC=!ERRORLEVEL!"
 )
 if not "%RC%"=="0" if not "%RC%"=="3010" (
