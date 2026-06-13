@@ -307,7 +307,7 @@ if not exist "third_party\qt\bin\Qt6Core.dll" (
 
 :: Run update_deps.py if needed
 echo Checking dependencies...
-python build_tools\update_deps.py --noqt --nollvm --nomsys2 --nondk --nosubmodules
+python build_tools\update_deps.py --noqt --nollvm --nomsys2 --nondk
 
 :: Build ARM64 MSI installer with Bazel
 echo.

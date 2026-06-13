@@ -168,7 +168,7 @@ jobs:
       - name: Update Mozc dependencies
         shell: cmd
         working-directory: mozc/src
-        run: python build_tools/update_deps.py --noqt --nollvm --nomsys2 --nondk --nosubmodules
+        run: python build_tools/update_deps.py --noqt --nollvm --nomsys2 --nondk
 
       - name: Build Mozc x64 MSI
         shell: cmd
