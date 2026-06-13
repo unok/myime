@@ -4,11 +4,11 @@ setlocal EnableDelayedExpansion
 :: ==============================================
 :: MyIME Build Script - ARM64
 :: ==============================================
-:: !! æ³¨æ„: ARM64 ã¯ç¾åœ¨æ£šä¸Šã’ä¸­ã§ã€ã“ã®ã‚¹ã‚¯ãƒªãƒ—ãƒˆã¯å‹•ä½œã—ã¾ã›ã‚“ !!
-:: mozc ã® upstream rebase (2026-06) ã§ installer_arm64 ã‚¿ãƒ¼ã‚²ãƒƒãƒˆã¯å»ƒæ­¢ã•ã‚Œã€
-:: universal installer æ–¹å¼ (//:enable_win_universal_installer) ã«å¤‰ã‚ã‚Šã¾ã—ãŸã€‚
-:: å†é–‹æ™‚ã¯æœ¬ã‚¹ã‚¯ãƒªãƒ—ãƒˆã® Bazel ã‚¿ãƒ¼ã‚²ãƒƒãƒˆã¨ MSI ãƒ‘ã‚¹ã®å†è¨­è¨ˆãŒå¿…è¦ã§ã™ã€‚
-:: è©³ç´°: docs/upstream-divergence.mdã€ŒARM64 ã®æ‰±ã„ã€
+:: !! ’ˆÓ: ARM64 ‚ÍŒ»İ’Iã‚°’†‚ÅA‚±‚ÌƒXƒNƒŠƒvƒg‚Í“®ì‚µ‚Ü‚¹‚ñ !!
+:: mozc ‚Ì upstream rebase (2026-06) ‚Å installer_arm64 ƒ^[ƒQƒbƒg‚Í”p~‚³‚êA
+:: universal installer •û® (//:enable_win_universal_installer) ‚É•Ï‚í‚è‚Ü‚µ‚½B
+:: ÄŠJ‚Í–{ƒXƒNƒŠƒvƒg‚Ì Bazel ƒ^[ƒQƒbƒg‚Æ MSI ƒpƒX‚ÌÄİŒv‚ª•K—v‚Å‚·B
+:: Ú×: docs/upstream-divergence.mduARM64 ‚Ìˆµ‚¢v
 ::
 :: This script builds the ARM64 version:
 :: 1. Check dependencies

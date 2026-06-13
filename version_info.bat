@@ -4,7 +4,7 @@ setlocal EnableDelayedExpansion
 :: ==============================================
 :: MyIME Version Info
 :: ==============================================
-:: ãƒ“ãƒ«ãƒ‰ç’°å¢ƒã®ãƒ„ãƒ¼ãƒ«ãƒ»ãƒ©ã‚¤ãƒ–ãƒ©ãƒªã®ãƒãƒ¼ã‚¸ãƒ§ãƒ³ã‚’è¡¨ç¤ºã™ã‚‹
+:: ƒrƒ‹ƒhŠÂ‹«‚Ìƒc[ƒ‹Eƒ‰ƒCƒuƒ‰ƒŠ‚Ìƒo[ƒWƒ‡ƒ“‚ð•\Ž¦‚·‚é
 :: ==============================================
 
 set "ROOT_DIR=%~dp0"
@@ -256,7 +256,7 @@ echo.
 echo [Bazel Dependencies (MODULE.bazel)]
 echo ----------------------------------------------
 
-:: ãƒãƒ¼ãƒ‰ã‚³ãƒ¼ãƒ‰ã™ã‚‹ã¨ MODULE.bazel æ›´æ–°æ™‚ã«ä¹–é›¢ã—ã¦å˜˜ã‚’ã¤ããŸã‚ã€å‹•çš„ã«æŠ½å‡ºã™ã‚‹
+:: ƒn[ƒhƒR[ƒh‚·‚é‚Æ MODULE.bazel XVŽž‚É˜¨—£‚µ‚Ä‰R‚ð‚Â‚­‚½‚ßA“®“I‚É’Šo‚·‚é
 if exist "%~dp0mozc\src\MODULE.bazel" (
     powershell -NoProfile -Command "$t = Get-Content -Raw '%~dp0mozc\src\MODULE.bazel'; foreach ($m in [regex]::Matches($t, 'bazel_dep\(\s*name\s*=\s*\"([^\"]+)\"\s*,\s*version\s*=\s*\"([^\"]+)\"')) { '  {0,-20} {1}' -f ($m.Groups[1].Value + ':'), $m.Groups[2].Value }"
 ) else (
