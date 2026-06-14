@@ -7,15 +7,14 @@ setlocal EnableDelayedExpansion
 :: 既存 Mozc を完全アンインストールしてからクリーン新規インストールする。
 :: 初回インストールでは RegisterTIP64 + EnableTipProfile が確実に走るため、
 :: TIP(テキストサービス)が登録され IME 一覧に出る。
-:: 非Release ビルドには ScheduleReboot が無いので、プロセス/サービスを止めれば
-:: マシン再起動なしで何度でも入れ直せる。
+:: REBOOT=ReallySuppress を全 msiexec に付与し、自動再起動は絶対にさせない。
 ::
 :: 使い方:  dev-reinstall.bat            (既定の MSI を使用)
 ::          dev-reinstall.bat "msiパス"  (MSI を明示指定)
 ::
 :: 注意: mozc_tip64.dll を読み込み済みの一般アプリ(エクスプローラ/ブラウザ等)が
-::       起動したままだと、その DLL だけ「使用中」で置換できないことがある。
-::       その場合は該当アプリを閉じること。
+::       起動したままだと、その DLL の置換だけは次回再起動まで保留される
+::       (msiexec は 3010 を返す)。TIP 登録自体は完了するので IME 一覧には出る。
 :: ==============================================
 
 set "ROOT_DIR=%~dp0"
@@ -71,16 +70,23 @@ ping -n 3 127.0.0.1 >nul
 
 :: --- 既存 Mozc を UpgradeCode で検出して完全アンインストール ---
 :: WiX は毎ビルドで ProductCode を再生成するため、ProductCode 指定では消せない。
-:: UpgradeCode から関連製品を列挙して /x する。
+:: UpgradeCode から関連製品を列挙して /x する。REBOOT=ReallySuppress で再起動抑止。
 echo 既存の Mozc をアンインストールしています...
-powershell -NoProfile -Command "$i=New-Object -ComObject WindowsInstaller.Installer; try{$r=@($i.RelatedProducts('%UPGRADE_CODE%'))}catch{$r=@()}; foreach($p in $r){ Write-Host ('  uninstall: '+$p); $proc=Start-Process msiexec -ArgumentList ('/x '+$p+' /qn') -Wait -PassThru; Write-Host ('  exit='+$proc.ExitCode) }"
+powershell -NoProfile -Command "$i=New-Object -ComObject WindowsInstaller.Installer; try{$r=@($i.RelatedProducts('%UPGRADE_CODE%'))}catch{$r=@()}; foreach($p in $r){ Write-Host ('  uninstall: '+$p); $proc=Start-Process msiexec -ArgumentList ('/x '+$p+' /qn REBOOT=ReallySuppress') -Wait -PassThru; Write-Host ('  exit='+$proc.ExitCode) }"
 ping -n 2 127.0.0.1 >nul
 
 :: --- クリーン新規インストール (RegisterTIP64 + EnableTipProfile が走る) ---
+:: REBOOT=ReallySuppress: 使用中ファイルがあっても自動再起動させない
+:: (再起動が必要な場合は 3010 を返すのみ。置換は次回再起動まで保留される)
 echo クリーン新規インストールしています...
-msiexec /i "%MSI_LOCAL%" /qb
+msiexec /i "%MSI_LOCAL%" /qb REBOOT=ReallySuppress
 set "RC=%ERRORLEVEL%"
-if not "%RC%"=="0" if not "%RC%"=="3010" (
+if "%RC%"=="3010" (
+    echo [注意] 一部ファイルが使用中のため、完全反映には後で再起動が必要です。
+    echo        TIP 登録は完了済みなので IME 一覧には出ます。
+    set "RC=0"
+)
+if not "%RC%"=="0" (
     echo [ERROR] msiexec が失敗しました (exit %RC%)
     pause
     exit /b %RC%
