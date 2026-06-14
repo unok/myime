@@ -17,8 +17,8 @@ set "MOZC_SRC=%ROOT_DIR%mozc\src"
 set "BUILD_DIR=%ROOT_DIR%build"
 set "OUTPUT_DIR=%BUILD_DIR%\x64\release"
 
-:: ãƒªãƒã‚¸ãƒˆãƒªãƒ«ãƒ¼ãƒˆä»¥å¤–ã‹ã‚‰èµ·å‹•ã•ã‚ŒãŸå ´åˆã§ã‚‚ã€ç›¸å¯¾ãƒ‘ã‚¹å‰æã®å‡¦ç†
-:: (llama.cpp-src/llama.cpp-build ã®ç”Ÿæˆå…ˆãªã©) ãŒç ´ç¶»ã—ãªã„ã‚ˆã†ã«ã™ã‚‹
+:: ƒŠƒ|ƒWƒgƒŠƒ‹[ƒgˆÈŠO‚©‚ç‹N“®‚³‚ê‚½ê‡‚Å‚àA‘Š‘ÎƒpƒX‘O’ñ‚Ìˆ—
+:: (llama.cpp-src/llama.cpp-build ‚Ì¶¬æ‚È‚Ç) ‚ª”j’]‚µ‚È‚¢‚æ‚¤‚É‚·‚é
 pushd "%ROOT_DIR%"
 
 echo ==============================================
@@ -159,7 +159,7 @@ if exist "%LLAMA_BUILD%\llama.lib" (
     echo   [OK] llama.cpp x64 libs found
 ) else (
     echo   llama.cpp libs not found. Building from source...
-    :: ãƒãƒ¼ã‚¸ãƒ§ãƒ³ã¯ scripts\llama-cpp-version.env ã§ä¸€å…ƒç®¡ç†ï¼ˆç¬¬2å¼•æ•°ã‚’ç©ºã«ã™ã‚‹ã¨åŒãƒ•ã‚¡ã‚¤ãƒ«ã®å€¤ã‚’ä½¿ç”¨ï¼‰
+    :: ƒo[ƒWƒ‡ƒ“‚Í scripts\llama-cpp-version.env ‚ÅˆêŒ³ŠÇ—i‘æ2ˆø”‚ð‹ó‚É‚·‚é‚Æ“¯ƒtƒ@ƒCƒ‹‚Ì’l‚ðŽg—pj
     call "%ROOT_DIR%scripts\ci\build-llama-cpp.bat" x64 "" llama.cpp-build
     if !ERRORLEVEL! NEQ 0 (
         echo   [ERROR] llama.cpp build failed
@@ -222,8 +222,8 @@ copy /y "%SWIFT_DLL%" "%OUTPUT_DIR%\azookey-engine.dll" >nul
 echo Copied: azookey-engine.dll
 
 :: Copy Swift runtime libraries
-:: DLLãƒªã‚¹ãƒˆã¨æŽ¢ç´¢ãƒ­ã‚¸ãƒƒã‚¯ã¯ scripts\ci\copy-swift-runtime.ps1 ã«ä¸€å…ƒåŒ–
-:: (ãƒ•ã‚©ãƒ¼ãƒ«ãƒãƒƒã‚¯æŽ¢ç´¢: ã‚¤ãƒ³ã‚¹ãƒˆãƒ¼ãƒ©å½¢å¼ / swift.exeéš£æŽ¥ / SDKROOTç”±æ¥)
+:: DLLƒŠƒXƒg‚Æ’TõƒƒWƒbƒN‚Í scripts\ci\copy-swift-runtime.ps1 ‚ÉˆêŒ³‰»
+:: (ƒtƒH[ƒ‹ƒoƒbƒN’Tõ: ƒCƒ“ƒXƒg[ƒ‰Œ`Ž® / swift.exe—×Ú / SDKROOT—R—ˆ)
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%scripts\ci\copy-swift-runtime.ps1" -OutputDir "%OUTPUT_DIR%"
 if !ERRORLEVEL! NEQ 0 (
     echo [WARNING] Swift runtime not found - DLLs may be missing
@@ -279,16 +279,16 @@ pushd "%MOZC_SRC%"
 :: Check Clang version (requires 19.0.0 or newer for MSVC 14.44+ STL headers)
 "C:\Program Files\LLVM\bin\clang-cl.exe" --version > "%TEMP%\clang_ver.txt" 2>&1
 if !ERRORLEVEL! NEQ 0 (
-    echo [ERROR] clang-cl.exe ãŒè¦‹ã¤ã‹ã‚Šã¾ã›ã‚“ã€‚LLVM ã‚’ã‚¤ãƒ³ã‚¹ãƒˆãƒ¼ãƒ«ã—ã¦ãã ã•ã„ã€‚
+    echo [ERROR] clang-cl.exe ‚ªŒ©‚Â‚©‚è‚Ü‚¹‚ñBLLVM ‚ðƒCƒ“ƒXƒg[ƒ‹‚µ‚Ä‚­‚¾‚³‚¢B
     echo   winget install LLVM.LLVM
     goto :fail_pop2
 )
 for /f "tokens=3" %%v in ('findstr /c:"clang version" "%TEMP%\clang_ver.txt"') do set CLANG_VER=%%v
 for /f "tokens=1 delims=." %%m in ("!CLANG_VER!") do set CLANG_MAJOR=%%m
 if !CLANG_MAJOR! LSS 19 (
-    echo [ERROR] Clang ã®ãƒãƒ¼ã‚¸ãƒ§ãƒ³ãŒå¤ã„ã§ã™: !CLANG_VER!
-    echo   MSVC 14.44 ã® STL ãƒ˜ãƒƒãƒ€ã¯ Clang 19.0.0 ä»¥ä¸ŠãŒå¿…è¦ã§ã™ã€‚
-    echo   ä»¥ä¸‹ã®ã‚³ãƒžãƒ³ãƒ‰ã§ LLVM ã‚’ã‚¢ãƒƒãƒ—ãƒ‡ãƒ¼ãƒˆã—ã¦ãã ã•ã„:
+    echo [ERROR] Clang ‚Ìƒo[ƒWƒ‡ƒ“‚ªŒÃ‚¢‚Å‚·: !CLANG_VER!
+    echo   MSVC 14.44 ‚Ì STL ƒwƒbƒ_‚Í Clang 19.0.0 ˆÈã‚ª•K—v‚Å‚·B
+    echo   ˆÈ‰º‚ÌƒRƒ}ƒ“ƒh‚Å LLVM ‚ðƒAƒbƒvƒf[ƒg‚µ‚Ä‚­‚¾‚³‚¢:
     echo     winget upgrade LLVM.LLVM
     goto :fail_pop2
 )
@@ -318,8 +318,8 @@ python build_tools\update_deps.py --noqt --nollvm --nomsys2 --nondk
 echo.
 echo Building x64 MSI installer with Bazel (this may take several minutes)...
 echo   Output is being logged to: %ROOT_DIR%build-mozc.log
-:: NOTE: ä»¥å‰ã‚ã£ãŸ UACã‚¤ãƒ³ã‚¹ãƒˆãƒ¼ãƒ©æ¤œå‡ºå›žé¿ (__COMPAT_LAYER=RunAsInvoker) ã¯ã€
-:: upstream ãŒãƒ“ãƒ«ãƒ‰ãƒ„ãƒ¼ãƒ«ã‚’ build_msi ã«æ”¹åã—ã¦è§£æ±ºæ¸ˆã¿ã®ãŸã‚å‰Šé™¤ (mozc#1519)
+:: NOTE: ˆÈ‘O‚ ‚Á‚½ UACƒCƒ“ƒXƒg[ƒ‰ŒŸo‰ñ”ð (__COMPAT_LAYER=RunAsInvoker) ‚ÍA
+:: upstream ‚ªƒrƒ‹ƒhƒc[ƒ‹‚ð build_msi ‚É‰ü–¼‚µ‚Ä‰ðŒˆÏ‚Ý‚Ì‚½‚ßíœ (mozc#1519)
 bazelisk build --config=oss_windows --spawn_strategy=local //win32/installer:installer_x64 > "%ROOT_DIR%build-mozc.log" 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Bazel x64 build failed
@@ -360,7 +360,7 @@ popd
 endlocal
 exit /b 0
 
-:: å¤±æ•—æ™‚ã¯ãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªã‚¹ã‚¿ãƒƒã‚¯ã‚’å·»ãæˆ»ã—ã¦å‘¼ã³å‡ºã—å…ƒã® cwd ã‚’ä¿ã¤
+:: Ž¸”sŽž‚ÍƒfƒBƒŒƒNƒgƒŠƒXƒ^ƒbƒN‚ðŠª‚«–ß‚µ‚ÄŒÄ‚Ño‚µŒ³‚Ì cwd ‚ð•Û‚Â
 :fail_pop2
 popd
 :fail
