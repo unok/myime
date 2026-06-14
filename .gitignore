@@ -47,7 +47,15 @@ Thumbs.db
 config.json
 userdata/
 
-# Old local directories (now using subtrees)
-# src/AzooKeyKanaKanjiConverter-local/  # Replaced by src/AzooKeyKanaKanjiConverter
-# src/swift-tokenizers/  # Now a subtree
+# Old local directories
+# src/AzooKeyKanaKanjiConverter-local/  # Replaced by src/AzooKeyKanaKanjiConverter (subtree)
+# (swift-tokenizers は subtree 廃止済み → SwiftPM リモート依存。docs/adr/0002 参照)
 
+
+# Test build artifacts and logs
+tests/*.obj
+tests/*.exe
+tests/*stdout*.txt
+tests/*stderr*.txt
+tests/*result*.txt
+tests/compile.log

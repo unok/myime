@@ -17,6 +17,10 @@ set "MOZC_SRC=%ROOT_DIR%mozc\src"
 set "BUILD_DIR=%ROOT_DIR%build"
 set "OUTPUT_DIR=%BUILD_DIR%\x64\release"
 
+:: ƒŠƒ|ƒWƒgƒŠƒ‹[ƒgˆÈŠO‚©‚ç‹N“®‚³‚ê‚½ê‡‚Å‚àA‘Š‘ÎƒpƒX‘O’ñ‚Ìˆ—
+:: (llama.cpp-src/llama.cpp-build ‚Ì¶¬æ‚È‚Ç) ‚ª”j’]‚µ‚È‚¢‚æ‚¤‚É‚·‚é
+pushd "%ROOT_DIR%"
+
 echo ==============================================
 echo MyIME Build Script - x64
 echo ==============================================
@@ -155,7 +159,8 @@ if exist "%LLAMA_BUILD%\llama.lib" (
     echo   [OK] llama.cpp x64 libs found
 ) else (
     echo   llama.cpp libs not found. Building from source...
-    call "%ROOT_DIR%scripts\ci\build-llama-cpp.bat" x64 b4547 llama.cpp-build
+    :: ƒo[ƒWƒ‡ƒ“‚Í scripts\llama-cpp-version.env ‚ÅˆêŒ³ŠÇ—i‘æ2ˆø”‚ğ‹ó‚É‚·‚é‚Æ“¯ƒtƒ@ƒCƒ‹‚Ì’l‚ğg—pj
+    call "%ROOT_DIR%scripts\ci\build-llama-cpp.bat" x64 "" llama.cpp-build
     if !ERRORLEVEL! NEQ 0 (
         echo   [ERROR] llama.cpp build failed
         set "DEPS_OK=0"
@@ -176,7 +181,7 @@ if "%DEPS_OK%"=="0" (
     echo ==============================================
     echo [ERROR] Missing dependencies. Please install them and try again.
     echo ==============================================
-    exit /b 1
+    goto :fail
 )
 
 echo All dependencies found!
@@ -203,49 +208,24 @@ echo Building Swift package with Zenzai support (this may take a few minutes)...
 swift build -c release --arch x86_64
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Swift build failed
-    popd
-    exit /b 1
+    goto :fail_pop2
 )
 
 :: Copy DLL to output directory
 set "SWIFT_DLL=%SWIFT_DIR%\.build\release\azookey-engine.dll"
 if not exist "%SWIFT_DLL%" (
     echo [ERROR] azookey-engine.dll not found in build output
-    popd
-    exit /b 1
+    goto :fail_pop2
 )
 
 copy /y "%SWIFT_DLL%" "%OUTPUT_DIR%\azookey-engine.dll" >nul
 echo Copied: azookey-engine.dll
 
 :: Copy Swift runtime libraries
-set "SWIFT_RUNTIME="
-for %%p in ("%LocalAppData%\Programs\Swift\Runtimes" "%ProgramFiles%\Swift\Runtimes" "%SystemDrive%\Library\Swift\Runtimes") do (
-    if exist "%%~p" (
-        for /d %%t in ("%%~p\*") do (
-            if exist "%%t\usr\bin\swiftCore.dll" (
-                set "SWIFT_RUNTIME=%%t\usr\bin"
-                goto :swift_runtime_found
-            )
-        )
-    )
-)
-:swift_runtime_found
-if defined SWIFT_RUNTIME (
-    echo Copying Swift runtime libraries from: %SWIFT_RUNTIME%
-    copy /y "%SWIFT_RUNTIME%\swiftCore.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\swiftCRT.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\swiftDispatch.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\swift_Concurrency.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\swiftWinSDK.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\Foundation.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\FoundationEssentials.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\FoundationInternationalization.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\_FoundationICU.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\BlocksRuntime.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    copy /y "%SWIFT_RUNTIME%\dispatch.dll" "%OUTPUT_DIR%\" >nul 2>&1
-    echo   Copied Swift runtime DLLs
-) else (
+:: DLLƒŠƒXƒg‚Æ’TõƒƒWƒbƒN‚Í scripts\ci\copy-swift-runtime.ps1 ‚ÉˆêŒ³‰»
+:: (ƒtƒH[ƒ‹ƒoƒbƒN’Tõ: ƒCƒ“ƒXƒg[ƒ‰Œ`® / swift.exe—×Ú / SDKROOT—R—ˆ)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%scripts\ci\copy-swift-runtime.ps1" -OutputDir "%OUTPUT_DIR%"
+if !ERRORLEVEL! NEQ 0 (
     echo [WARNING] Swift runtime not found - DLLs may be missing
 )
 
@@ -276,7 +256,7 @@ echo.
 set "LLAMA_BUILD=%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows"
 if exist "%LLAMA_BUILD%" (
     echo Copying x64 llama.cpp DLLs...
-    for %%f in (ggml.dll ggml-base.dll ggml-cpu.dll ggml-vulkan.dll llama.dll llava_shared.dll mtmd.dll) do (
+    for %%f in (ggml.dll ggml-base.dll ggml-cpu.dll ggml-vulkan.dll llama.dll) do (
         if exist "%LLAMA_BUILD%\%%f" (
             copy /y "%LLAMA_BUILD%\%%f" "%OUTPUT_DIR%\" >nul
             echo   Copied: %%f
@@ -299,55 +279,52 @@ pushd "%MOZC_SRC%"
 :: Check Clang version (requires 19.0.0 or newer for MSVC 14.44+ STL headers)
 "C:\Program Files\LLVM\bin\clang-cl.exe" --version > "%TEMP%\clang_ver.txt" 2>&1
 if !ERRORLEVEL! NEQ 0 (
-    echo [ERROR] clang-cl.exe ãŒè¦‹ã¤ã‹ã‚Šã¾ã›ã‚“ã€‚LLVM ã‚’ã‚¤ãƒ³ã‚¹ãƒˆãƒ¼ãƒ«ã—ã¦ãã ã•ã„ã€‚
+    echo [ERROR] clang-cl.exe ‚ªŒ©‚Â‚©‚è‚Ü‚¹‚ñBLLVM ‚ğƒCƒ“ƒXƒg[ƒ‹‚µ‚Ä‚­‚¾‚³‚¢B
     echo   winget install LLVM.LLVM
-    popd
-    exit /b 1
+    goto :fail_pop2
 )
 for /f "tokens=3" %%v in ('findstr /c:"clang version" "%TEMP%\clang_ver.txt"') do set CLANG_VER=%%v
 for /f "tokens=1 delims=." %%m in ("!CLANG_VER!") do set CLANG_MAJOR=%%m
 if !CLANG_MAJOR! LSS 19 (
-    echo [ERROR] Clang ã®ãƒãƒ¼ã‚¸ãƒ§ãƒ³ãŒå¤ã„ã§ã™: !CLANG_VER!
-    echo   MSVC 14.44 ã® STL ãƒ˜ãƒƒãƒ€ã¯ Clang 19.0.0 ä»¥ä¸ŠãŒå¿…è¦ã§ã™ã€‚
-    echo   ä»¥ä¸‹ã®ã‚³ãƒãƒ³ãƒ‰ã§ LLVM ã‚’ã‚¢ãƒƒãƒ—ãƒ‡ãƒ¼ãƒˆã—ã¦ãã ã•ã„:
+    echo [ERROR] Clang ‚Ìƒo[ƒWƒ‡ƒ“‚ªŒÃ‚¢‚Å‚·: !CLANG_VER!
+    echo   MSVC 14.44 ‚Ì STL ƒwƒbƒ_‚Í Clang 19.0.0 ˆÈã‚ª•K—v‚Å‚·B
+    echo   ˆÈ‰º‚ÌƒRƒ}ƒ“ƒh‚Å LLVM ‚ğƒAƒbƒvƒf[ƒg‚µ‚Ä‚­‚¾‚³‚¢:
     echo     winget upgrade LLVM.LLVM
-    popd
-    exit /b 1
+    goto :fail_pop2
 )
 echo Clang version: %CLANG_VER% ... OK
 
 :: Check and build Qt if needed
 if not exist "third_party\qt\bin\Qt6Core.dll" (
     echo Qt not found, downloading Qt source...
-    python build_tools\update_deps.py --nollvm --nomsys2 --nondk --nosubmodules
+    python build_tools\update_deps.py --nollvm --nomsys2 --nondk
     if !ERRORLEVEL! NEQ 0 (
         echo [ERROR] Qt source download failed
-        popd
-        exit /b 1
+        goto :fail_pop2
     )
     echo Building Qt...
     python build_tools\build_qt.py --release --confirm_license
     if !ERRORLEVEL! NEQ 0 (
         echo [ERROR] Qt build failed
-        popd
-        exit /b 1
+        goto :fail_pop2
     )
 )
 
 :: Run update_deps.py if needed
 echo Checking dependencies...
-python build_tools\update_deps.py --noqt --nollvm --nomsys2 --nondk --nosubmodules
+python build_tools\update_deps.py --noqt --nollvm --nomsys2 --nondk
 
 :: Build MSI installer with Bazel
 echo.
 echo Building x64 MSI installer with Bazel (this may take several minutes)...
 echo   Output is being logged to: %ROOT_DIR%build-mozc.log
+:: NOTE: ˆÈ‘O‚ ‚Á‚½ UACƒCƒ“ƒXƒg[ƒ‰ŒŸo‰ñ”ğ (__COMPAT_LAYER=RunAsInvoker) ‚ÍA
+:: upstream ‚ªƒrƒ‹ƒhƒc[ƒ‹‚ğ build_msi ‚É‰ü–¼‚µ‚Ä‰ğŒˆÏ‚İ‚Ì‚½‚ßíœ (mozc#1519)
 bazelisk build --config=oss_windows --spawn_strategy=local //win32/installer:installer_x64 > "%ROOT_DIR%build-mozc.log" 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Bazel x64 build failed
     echo   See build-mozc.log for details
-    popd
-    exit /b 1
+    goto :fail_pop2
 )
 echo   Bazel build completed successfully
 
@@ -357,6 +334,9 @@ if exist "%MSI_PATH%" (
     copy /y "%MSI_PATH%" "%ROOT_DIR%Mozc_x64.msi" >nul
     echo.
     echo x64 MSI installer created: %ROOT_DIR%Mozc_x64.msi
+) else (
+    echo [ERROR] MSI not found at expected path: %MSI_PATH%
+    goto :fail_pop2
 )
 
 popd
@@ -376,5 +356,13 @@ echo   2. Run Mozc_x64.msi as administrator
 echo   3. Restart your computer
 echo.
 
+popd
 endlocal
 exit /b 0
+
+:: ¸”s‚ÍƒfƒBƒŒƒNƒgƒŠƒXƒ^ƒbƒN‚ğŠª‚«–ß‚µ‚ÄŒÄ‚Ño‚µŒ³‚Ì cwd ‚ğ•Û‚Â
+:fail_pop2
+popd
+:fail
+popd
+exit /b 1

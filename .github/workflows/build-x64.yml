@@ -9,7 +9,6 @@ on:
 
 env:
   SWIFT_VERSION: "6.2.1"
-  LLAMA_CPP_VERSION: "b4500"
 
 jobs:
   build:
@@ -21,6 +20,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      # LLAMA_CPP_REPO / LLAMA_CPP_VERSION の正準定義（Zenzai用パッチ入りfork）
+      - name: Load llama.cpp version
+        shell: bash
+        run: cat scripts/llama-cpp-version.env >> "$GITHUB_ENV"
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -65,15 +69,19 @@ jobs:
           path: mozc/src/third_party/qt
           key: qt-windows-x64-v2-${{ hashFiles('mozc/src/build_tools/build_qt.py') }}
 
+      # NOTE: 以前は ~/.cache/bazel をキャッシュしていたが、Windows の Bazel は
+      # %USERPROFILE%\_bazel_* / %LocalAppData%\bazelisk を使うため実効性がなかった
+      # (毎回外部依存をフル fetch していた)。--repository_cache を明示パスに固定し、
+      # それと bazelisk のダウンロードキャッシュを保存する。
       - name: Cache Bazel repository
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cache/bazel
-            ~/.cache/bazelisk
-          key: bazel-windows-x64-${{ hashFiles('mozc/src/MODULE.bazel', 'mozc/src/.bazelrc') }}
+            .bazel-repo-cache
+            ~/AppData/Local/bazelisk
+          key: bazel-repo-windows-x64-${{ hashFiles('mozc/src/MODULE.bazel', 'mozc/src/.bazeliskrc') }}
           restore-keys: |
-            bazel-windows-x64-
+            bazel-repo-windows-x64-
 
       - name: Cache Swift Package Manager
         uses: actions/cache@v4
@@ -160,12 +168,12 @@ jobs:
       - name: Update Mozc dependencies
         shell: cmd
         working-directory: mozc/src
-        run: python build_tools/update_deps.py --noqt --nollvm --nomsys2 --nondk --nosubmodules
+        run: python build_tools/update_deps.py --noqt --nollvm --nomsys2 --nondk
 
       - name: Build Mozc x64 MSI
         shell: cmd
         working-directory: mozc/src
-        run: bazelisk build --config=oss_windows --spawn_strategy=local //win32/installer:installer_x64
+        run: bazelisk build --repository_cache=%GITHUB_WORKSPACE%\.bazel-repo-cache --config=oss_windows --spawn_strategy=local //win32/installer:installer_x64
 
       - name: Copy MSI
         run: copy mozc\src\bazel-bin\win32\installer\Mozc_x64.msi .

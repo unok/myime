@@ -23,7 +23,7 @@ Windows向け日本語IME。MozcのUIフレームワークとAzooKeyのかな漢
 
 ### 1. 必要条件
 
-- Windows 10/11 (x64 または ARM64)
+- Windows 10/11 (x64)　※ ARM64 対応は現在棚上げ中
 - Visual Studio 2022 (C++ ワークロード)
 - Swift 6.2.1 以上 (Windows版)
 - Bazelisk
@@ -41,16 +41,15 @@ cd myime
 # x64 ビルド
 build-x64.bat
 
-# ARM64 ビルド
-build-arm64.bat
+# ARM64 ビルド（現在棚上げ中・動作しません）
+# build-arm64.bat
 ```
 
 ### 3. インストール
 
 ```cmd
 # 管理者権限で MSI を実行
-Mozc_x64.msi    # x64 の場合
-Mozc_arm64.msi  # ARM64 の場合
+Mozc_x64.msi
 ```
 
 インストール時に Zenzai AI モデルが自動でダウンロードされます（約500MB）。
@@ -64,7 +63,7 @@ Windows の「設定」→「アプリ」→「Mozc」からアンインスト�
 | スクリプト | 説明 |
 |-----------|------|
 | `build-x64.bat` | x64 用 Swift DLL + Mozc MSI をビルド |
-| `build-arm64.bat` | ARM64 用 Swift DLL + Mozc MSI をビルド |
+| `build-arm64.bat` | ARM64 用ビルド（**現在棚上げ中・動作しません**） |
 | `build-mozc.bat` | Mozc のみビルド（Swift DLL はスキップ） |
 | `clean.bat` | ビルド成果物をクリーンアップ |
 | `restart-ime.bat` | IME プロセスを再起動 |

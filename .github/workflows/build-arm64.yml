@@ -4,13 +4,16 @@ name: Build arm64 (disabled)
 # - Bazel issue #22164: C++ toolchain resolution broken on ARM64 Windows
 # - Swift ARM64 cross-compilation not supported
 # Re-enable when these issues are resolved.
+#
+# 注意 (2026-06): mozc の upstream rebase により installer_arm64 ターゲットは
+# 廃止済み (universal installer 方式に移行)。再開時はこの workflow の
+# ターゲット名・MSI パスの再設計が必要。docs/upstream-divergence.md 参照。
 
 on:
   workflow_dispatch:  # Manual trigger only
 
 env:
   SWIFT_VERSION: "6.2.1"
-  LLAMA_CPP_VERSION: "b4500"
 
 jobs:
   build:
@@ -22,6 +25,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      # LLAMA_CPP_REPO / LLAMA_CPP_VERSION の正準定義（Zenzai用パッチ入りfork）
+      - name: Load llama.cpp version
+        shell: bash
+        run: cat scripts/llama-cpp-version.env >> "$GITHUB_ENV"
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -146,7 +154,7 @@ jobs:
       - name: Update Mozc dependencies
         shell: cmd
         working-directory: mozc/src
-        run: python build_tools/update_deps.py --noqt --nollvm --nomsys2 --nondk --nosubmodules
+        run: python build_tools/update_deps.py --noqt --nollvm --nomsys2 --nondk
 
       - name: Build Mozc arm64 MSI
         shell: cmd

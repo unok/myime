@@ -34,10 +34,9 @@ restart-ime.bat
 ```
 
 ### ビルド成果物
-- `Mozc_X64.msi` - x64インストーラ
-- `Mozc_ARM64.msi` - arm64インストーラ
+- `Mozc_x64.msi` - x64インストーラ
 - `build\x64\release\` - x64 DLLファイル群
-- `build\arm64\release\` - arm64 DLLファイル群
+- ARM64 は現在棚上げ中（docs/upstream-divergence.md 参照。build-arm64.bat は現行の mozc 構造と未整合）
 
 ## アーキテクチャ
 
@@ -87,7 +86,7 @@ myime/
 
 | パス | リポジトリ | ブランチ | 説明 |
 |------|-----------|---------|------|
-| `mozc/` | `https://github.com/unok/mozc.git` | `patch-myime` | Mozc fork (upstream: google/mozc) |
+| `mozc/` | `https://github.com/unok/mozc.git` | `patch-myime-next` | Mozc fork (upstream: google/mozc) |
 | `src/AzooKeyKanaKanjiConverter/.../azooKey_dictionary_storage` | `https://github.com/azooKey/azooKey_dictionary_storage.git` | - | 辞書データ |
 | `src/AzooKeyKanaKanjiConverter/.../azooKey_emoji_dictionary_storage` | `https://github.com/azooKey/azooKey_emoji_dictionary_storage.git` | - | 絵文字辞書データ |
 
@@ -96,7 +95,6 @@ myime/
 | パス | リポジトリ (fork) | ブランチ | upstream |
 |------|------------------|---------|----------|
 | `src/AzooKeyKanaKanjiConverter/` | `unok/AzooKeyKanaKanjiConverter` | `windows-llama-patch` | `azooKey/AzooKeyKanaKanjiConverter` |
-| `src/swift-tokenizers/` | `unok/swift-tokenizers` | `windows-swift621-patch` | `huggingface/swift-transformers` |
 
 subtree操作：
 ```bash
@@ -105,18 +103,16 @@ git subtree pull --prefix=src/AzooKeyKanaKanjiConverter https://github.com/unok/
 
 # AzooKeyKanaKanjiConverter を push
 git subtree push --prefix=src/AzooKeyKanaKanjiConverter https://github.com/unok/AzooKeyKanaKanjiConverter.git windows-llama-patch
-
-# swift-tokenizers を pull
-git subtree pull --prefix=src/swift-tokenizers https://github.com/unok/swift-tokenizers.git windows-swift621-patch --squash
-
-# swift-tokenizers を push
-git subtree push --prefix=src/swift-tokenizers https://github.com/unok/swift-tokenizers.git windows-swift621-patch
 ```
+
+※ swift-tokenizers は 2026-06 に subtree を廃止（docs/adr/0002 参照）。現在は SwiftPM のリモート依存:
+- `unok/swift-tokenizers` の `windows-upstream-patch` ブランチ（upstream `huggingface/swift-transformers` + Windowsパッチ）
+- `unok/swift-huggingface` の `windows-patch` ブランチ（FileLockスタブ・fnmatchシム等 約70行）
 
 ### Mozc fork について
 - **origin**: `https://github.com/unok/mozc.git` (自分のfork)
 - **upstream**: `https://github.com/google/mozc.git` (本家)
-- AzooKey統合用のカスタマイズを`patch-myime`ブランチで管理
+- AzooKey統合用のカスタマイズを`patch-myime-next`ブランチで管理（2026-06 に upstream へ rebase。旧 `patch-myime` はバックアップとして温存）
 
 ## 主要コンポーネント
 
@@ -126,7 +122,7 @@ git subtree push --prefix=src/swift-tokenizers https://github.com/unok/swift-tok
 - C FFI経由でMozcと連携
 
 ### Mozc (`mozc/`)
-- `unok/mozc` fork (patch-myime branch)
+- `unok/mozc` fork (patch-myime-next branch)
 - AzooKey DLLを組み込むカスタマイズ済み
 - Bazelでビルド
 
@@ -152,10 +148,19 @@ git subtree push --prefix=src/swift-tokenizers https://github.com/unok/swift-tok
 ```batch
 # Bazelビルドのみ実行
 cd mozc\src
-bazelisk build --config=oss_windows //win32/installer:installer
+bazelisk build --config=oss_windows //win32/installer:installer_x64
 ```
 
+### UACインストーラ検出（解決済みの歴史的メモ）
+かつてローカルMSIビルドで、UACの「インストーラ検出」が `build_installer.exe`
+（名前に install を含む未署名exe）の起動を error 740 で拒否し
+`Permission denied (Exit 126)` で失敗していた。upstream がビルドツールを
+`build_msi` に改名して解決済み（google/mozc#1519）。`__COMPAT_LAYER=RunAsInvoker`
+の回避策は不要になり削除した。
+
 ## 開発タスク: 文節調整機能
+
+※ このセクションは過去の動作検証記録（基準日 2024-12-23）。現在のアーキテクチャ全体は docs/architecture.md を参照。
 
 ### 現状 (2024-12-23)
 

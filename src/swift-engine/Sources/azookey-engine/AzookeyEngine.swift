@@ -1,14 +1,20 @@
 import Foundation
 import KanaKanjiConverterModuleWithDefaultDictionary
 
-// MARK: - Using KanaKanjiConverterModuleWithDefaultDictionary with patched AzooKey v0.11.1
+// MARK: - Using KanaKanjiConverterModuleWithDefaultDictionary with patched AzooKey
 
 // MARK: - Global State
-// Note: nonisolated(unsafe) is used for global mutable state accessed from exported C functions
+// すべてのエクスポート関数は engineLock で排他する。
+// Mozc 側 (ImmutableConverterInterface::Convert は const = スレッドセーフ前提) から
+// 複数スレッドで呼ばれても状態が混線しないようにするため。
+nonisolated(unsafe) private let engineLock = NSLock()
 nonisolated(unsafe) private var converter: KanaKanjiConverter?
+nonisolated(unsafe) private var initCount = 0
 nonisolated(unsafe) private var composingText = ComposingText()
 nonisolated(unsafe) private var currentCandidates: [Candidate] = []
 nonisolated(unsafe) private var config = EngineConfig()
+// TextReplacer (絵文字辞書の読み込みを伴う) は高コストなので変換毎に作らずキャッシュする
+nonisolated(unsafe) private var cachedTextReplacer: TextReplacer?
 
 /// Engine configuration
 struct EngineConfig {
@@ -19,8 +25,9 @@ struct EngineConfig {
     var zenzaiWeightPath: String = ""
 }
 
-/// Get conversion options
-private func getOptions() -> ConvertRequestOptions {
+/// Get conversion options (caller must hold engineLock)
+/// - Parameter allowLearning: false なら学習を無効化する (シークレットモード等)
+private func getOptions(allowLearning: Bool = true) -> ConvertRequestOptions {
     var zenzaiMode: ConvertRequestOptions.ZenzaiMode = .off
 
     if config.zenzaiEnabled, !config.zenzaiWeightPath.isEmpty {
@@ -29,19 +36,46 @@ private func getOptions() -> ConvertRequestOptions {
     }
 
     let memoryURL = config.memoryPath.isEmpty ? nil : URL(fileURLWithPath: config.memoryPath)
+    let learningEnabled = (memoryURL != nil) && allowLearning
+
+    let textReplacer: TextReplacer
+    if let cached = cachedTextReplacer {
+        textReplacer = cached
+    } else {
+        textReplacer = TextReplacer.withDefaultEmojiDictionary()
+        cachedTextReplacer = textReplacer
+    }
 
     return ConvertRequestOptions(
         requireJapanesePrediction: true,
         requireEnglishPrediction: false,
         keyboardLanguage: .ja_JP,
-        learningType: memoryURL != nil ? .inputAndOutput : .nothing,
+        learningType: learningEnabled ? .inputAndOutput : .nothing,
         memoryDirectoryURL: memoryURL ?? URL(fileURLWithPath: NSTemporaryDirectory()),
         sharedContainerURL: memoryURL ?? URL(fileURLWithPath: NSTemporaryDirectory()),
-        textReplacer: TextReplacer.withDefaultEmojiDictionary(),
+        textReplacer: textReplacer,
         specialCandidateProviders: nil,
         zenzaiMode: zenzaiMode,
         metadata: nil
     )
+}
+
+/// Build the candidates JSON for the current `currentCandidates` (caller must hold engineLock)
+private func candidatesJson() -> UnsafePointer<CChar>? {
+    // correspondingCount is the number of hiragana characters this candidate covers
+    let candidateObjects = currentCandidates.map { candidate -> [String: Any] in
+        return [
+            "text": candidate.text,
+            "correspondingCount": candidate.rubyCount
+        ]
+    }
+
+    guard let jsonData = try? JSONSerialization.data(withJSONObject: candidateObjects),
+          let jsonString = String(data: jsonData, encoding: .utf8) else {
+        return UnsafePointer(_strdup("[]"))
+    }
+
+    return UnsafePointer(_strdup(jsonString))
 }
 
 // MARK: - Exported Functions
@@ -56,6 +90,9 @@ public func loadConfig(_ configPath: UnsafePointer<CChar>?) {
           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
         return
     }
+
+    engineLock.lock()
+    defer { engineLock.unlock() }
 
     if let dictPath = json["dictionaryPath"] as? String {
         config.dictionaryPath = dictPath
@@ -74,8 +111,23 @@ public func loadConfig(_ configPath: UnsafePointer<CChar>?) {
     }
 }
 
+/// Initialize the engine. Returns 1 on success, 0 on failure.
+/// 参照カウント方式: Mozc 側はコンバータインスタンスごとに Initialize/Shutdown を
+/// 呼ぶが、エンジン状態はプロセスグローバル単一のため、Engine::ReloadModules で
+/// 新旧インスタンスが入れ替わる際に旧側の Shutdown が新側を壊さないようにする。
 @_silgen_name("Initialize")
-public func initialize(_ dictionaryPath: UnsafePointer<CChar>?, _ memoryPath: UnsafePointer<CChar>?) {
+public func initialize(_ dictionaryPath: UnsafePointer<CChar>?, _ memoryPath: UnsafePointer<CChar>?) -> Int32 {
+    engineLock.lock()
+    defer { engineLock.unlock() }
+
+    // 既に初期化済みなら設定の上書き・検証は行わず参照カウントだけ増やす。
+    // (ReloadModules 等の多重 Initialize で、正常稼働中のエンジンが
+    //  新しい引数の検証失敗により誤って「失敗」扱いになるのを防ぐ)
+    if converter != nil {
+        initCount += 1
+        return 1
+    }
+
     if let dictPath = dictionaryPath {
         config.dictionaryPath = String(cString: dictPath)
     }
@@ -83,7 +135,20 @@ public func initialize(_ dictionaryPath: UnsafePointer<CChar>?, _ memoryPath: Un
         config.memoryPath = String(cString: memPath)
     }
 
-    // Initialize converter with dictionary
+    // カスタム辞書パス指定時は存在を検証して失敗を呼び出し元に伝える
+    if !config.dictionaryPath.isEmpty,
+       !FileManager.default.fileExists(atPath: config.dictionaryPath) {
+        return 0
+    }
+    // 学習ディレクトリが指定されているのに作成できない場合は学習なしで続行
+    if !config.memoryPath.isEmpty {
+        try? FileManager.default.createDirectory(
+            atPath: config.memoryPath, withIntermediateDirectories: true)
+        if !FileManager.default.fileExists(atPath: config.memoryPath) {
+            config.memoryPath = ""
+        }
+    }
+
     if config.dictionaryPath.isEmpty {
         converter = KanaKanjiConverter.withDefaultDictionary()
     } else {
@@ -91,54 +156,92 @@ public func initialize(_ dictionaryPath: UnsafePointer<CChar>?, _ memoryPath: Un
         let dicdataStore = DicdataStore(dictionaryURL: dictURL)
         converter = KanaKanjiConverter(dicdataStore: dicdataStore)
     }
-
     composingText = ComposingText()
     currentCandidates = []
+
+    initCount += 1
+    return converter != nil ? 1 : 0
 }
 
 @_silgen_name("Shutdown")
 public func shutdown() {
-    converter = nil
-    composingText = ComposingText()
-    currentCandidates = []
+    engineLock.lock()
+    defer { engineLock.unlock() }
+
+    initCount = max(0, initCount - 1)
+    if initCount == 0 {
+        converter = nil
+        composingText = ComposingText()
+        currentCandidates = []
+        cachedTextReplacer = nil
+    }
+}
+
+/// 単発変換API: key (UTF-8ひらがな) の候補リストを JSON で返す。
+/// ClearText → AppendText → GetCandidates の3呼び出しと違い、1呼び出しで
+/// 完結するため呼び出し間に他スレッドの操作が割り込まない。
+/// allowLearning=0 でこのリクエストの学習を無効化 (シークレットモード)。
+@_silgen_name("ConvertText")
+public func convertText(_ key: UnsafePointer<CChar>?, _ allowLearning: Int32) -> UnsafePointer<CChar>? {
+    guard let key = key else { return nil }
+    let keyString = String(cString: key)
+
+    engineLock.lock()
+    defer { engineLock.unlock() }
+
+    guard let conv = converter else { return nil }
+
+    var text = ComposingText()
+    // Use .direct for hiragana input from Mozc (not roman2kana)
+    text.insertAtCursorPosition(keyString, inputStyle: .direct)
+
+    let result = conv.requestCandidates(text, options: getOptions(allowLearning: allowLearning != 0))
+    composingText = text
+    currentCandidates = result.mainResults
+
+    return candidatesJson()
 }
 
 @_silgen_name("AppendText")
 public func appendText(_ input: UnsafePointer<CChar>?) {
     guard let input = input else { return }
     let inputString = String(cString: input)
+    engineLock.lock()
+    defer { engineLock.unlock() }
     // Use .direct for hiragana input from Mozc (not roman2kana)
     composingText.insertAtCursorPosition(inputString, inputStyle: .direct)
 }
 
 @_silgen_name("RemoveText")
 public func removeText(_ count: Int32) {
-    for _ in 0..<count {
-        composingText.deleteBackwardFromCursorPosition(count: 1)
-    }
+    // 負数や0で Range 生成の fatalError を起こさないよう防御（C ABI 越しの外部入力）
+    guard count > 0 else { return }
+    engineLock.lock()
+    defer { engineLock.unlock() }
+    composingText.deleteBackwardFromCursorPosition(count: Int(count))
 }
 
 @_silgen_name("MoveCursor")
 public func moveCursor(_ offset: Int32) {
-    if offset > 0 {
-        for _ in 0..<offset {
-            _ = composingText.moveCursorFromCursorPosition(count: 1)
-        }
-    } else if offset < 0 {
-        for _ in 0..<(-offset) {
-            _ = composingText.moveCursorFromCursorPosition(count: -1)
-        }
+    engineLock.lock()
+    defer { engineLock.unlock() }
+    if offset != 0 {
+        _ = composingText.moveCursorFromCursorPosition(count: Int(offset))
     }
 }
 
 @_silgen_name("ClearText")
 public func clearText() {
+    engineLock.lock()
+    defer { engineLock.unlock() }
     composingText = ComposingText()
     currentCandidates = []
 }
 
 @_silgen_name("GetComposedText")
 public func getComposedText() -> UnsafePointer<CChar>? {
+    engineLock.lock()
+    defer { engineLock.unlock() }
     guard let conv = converter else { return nil }
 
     let result = conv.requestCandidates(composingText, options: getOptions())
@@ -154,35 +257,25 @@ public func getComposedText() -> UnsafePointer<CChar>? {
 
 @_silgen_name("GetCandidates")
 public func getCandidates() -> UnsafePointer<CChar>? {
+    engineLock.lock()
+    defer { engineLock.unlock() }
     guard let conv = converter else { return nil }
 
     let result = conv.requestCandidates(composingText, options: getOptions())
     currentCandidates = result.mainResults
 
-    // Return candidates as JSON array with text and correspondingCount
-    // correspondingCount is the number of hiragana characters this candidate covers
-    let candidateObjects = currentCandidates.map { candidate -> [String: Any] in
-        return [
-            "text": candidate.text,
-            "correspondingCount": candidate.rubyCount
-        ]
-    }
-
-    guard let jsonData = try? JSONSerialization.data(withJSONObject: candidateObjects),
-          let jsonString = String(data: jsonData, encoding: .utf8) else {
-        return UnsafePointer(_strdup("[]"))
-    }
-
-    return UnsafePointer(_strdup(jsonString))
+    return candidatesJson()
 }
 
 @_silgen_name("SelectCandidate")
 public func selectCandidate(_ index: Int32) {
+    engineLock.lock()
+    defer { engineLock.unlock() }
     guard index >= 0, index < currentCandidates.count else { return }
 
     let selected = currentCandidates[Int(index)]
 
-    // Apply the selected candidate
+    // Apply the selected candidate (feeds user learning when enabled)
     if let conv = converter {
         conv.setCompletedData(selected)
     }
@@ -194,37 +287,37 @@ public func selectCandidate(_ index: Int32) {
 
 @_silgen_name("ShrinkText")
 public func shrinkText() {
+    engineLock.lock()
+    defer { engineLock.unlock() }
     composingText.deleteForwardFromCursorPosition(count: 1)
-}
-
-@_silgen_name("ExpandText")
-public func expandText() {
-    // Not implemented in current version
-}
-
-@_silgen_name("SetContext")
-public func setContext(_ precedingText: UnsafePointer<CChar>?) {
-    // Context support not implemented yet
 }
 
 @_silgen_name("SetZenzaiEnabled")
 public func setZenzaiEnabled(_ enabled: Bool) {
+    engineLock.lock()
+    defer { engineLock.unlock() }
     config.zenzaiEnabled = enabled
 }
 
 @_silgen_name("SetZenzaiInferenceLimit")
 public func setZenzaiInferenceLimit(_ limit: Int32) {
+    engineLock.lock()
+    defer { engineLock.unlock() }
     config.zenzaiInferenceLimit = Int(limit)
 }
 
 @_silgen_name("SetZenzaiWeightPath")
 public func setZenzaiWeightPath(_ path: UnsafePointer<CChar>?) {
     guard let path = path else { return }
+    engineLock.lock()
+    defer { engineLock.unlock() }
     config.zenzaiWeightPath = String(cString: path)
 }
 
 @_silgen_name("GetZenzaiStatus")
 public func getZenzaiStatus() -> UnsafePointer<CChar>? {
+    engineLock.lock()
+    defer { engineLock.unlock() }
     var status: [String: Any] = [
         "enabled": config.zenzaiEnabled,
         "weightPath": config.zenzaiWeightPath,
@@ -254,64 +347,4 @@ public func getZenzaiStatus() -> UnsafePointer<CChar>? {
 public func freeString(_ str: UnsafePointer<CChar>?) {
     guard let str = str else { return }
     free(UnsafeMutablePointer(mutating: str))
-}
-
-// MARK: - Test API wrapper functions
-
-@_cdecl("azookey_create")
-public func azookey_create(_ configJson: UnsafePointer<CChar>?) -> UnsafeMutableRawPointer? {
-    guard let configJson = configJson else { return nil }
-
-    let jsonString = String(cString: configJson)
-
-    // Parse JSON configuration
-    guard let jsonData = jsonString.data(using: .utf8),
-          let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
-        return nil
-    }
-
-    // Update configuration
-    if let dictPath = json["dictionaryPath"] as? String {
-        config.dictionaryPath = dictPath
-    }
-    if let memPath = json["memoryPath"] as? String {
-        config.memoryPath = memPath
-    }
-    if let zenzaiEnabled = json["zenzaiEnabled"] as? Bool {
-        config.zenzaiEnabled = zenzaiEnabled
-    }
-    if let zenzaiLimit = json["zenzaiInferenceLimit"] as? Int {
-        config.zenzaiInferenceLimit = zenzaiLimit
-    }
-    if let zenzaiWeight = json["zenzaiWeightPath"] as? String {
-        config.zenzaiWeightPath = zenzaiWeight
-    }
-
-    // Initialize converter
-    initialize(nil, nil)
-
-    // Return a dummy handle (not nil to indicate success)
-    return UnsafeMutableRawPointer(bitPattern: 1)
-}
-
-@_cdecl("azookey_destroy")
-public func azookey_destroy(_ engine: UnsafeMutableRawPointer?) {
-    shutdown()
-}
-
-@_cdecl("azookey_convert")
-public func azookey_convert(_ engine: UnsafeMutableRawPointer?, _ input: UnsafePointer<CChar>?) -> UnsafePointer<CChar>? {
-    guard let input = input else { return nil }
-
-    // Clear existing text and append new input
-    clearText()
-    appendText(input)
-
-    // Get conversion result
-    return getComposedText()
-}
-
-@_cdecl("azookey_free_string")
-public func azookey_free_string(_ str: UnsafePointer<CChar>?) {
-    freeString(str)
 }

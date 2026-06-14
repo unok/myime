@@ -17,11 +17,11 @@ var dependencies: [Package.Dependency] = [
     .package(url: "https://github.com/apple/swift-algorithms", from: "1.0.0"),
     .package(url: "https://github.com/apple/swift-collections", from: "1.0.0"),
     .package(url: "https://github.com/apple/swift-argument-parser", .upToNextMajor(from: "1.0.0")),
-    // PATCHED: Use local patched version of swift-tokenizers
-    .package(path: "../swift-tokenizers")
+    // PATCHED: Use Windows-patched fork of swift-transformers (upstream-based)
+    .package(url: "https://github.com/unok/swift-tokenizers.git", branch: "windows-upstream-patch")
 ]
 
-// PATCHED: EfficientNGram dependencies with local swift-tokenizers
+// PATCHED: EfficientNGram dependencies with Windows-patched swift-tokenizers fork
 var efficientNGramDependencies: [Target.Dependency] = [
     .product(name: "Transformers", package: "swift-tokenizers")
 ]

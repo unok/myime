@@ -1,7 +1,7 @@
 [submodule "mozc"]
 	path = mozc
 	url = https://github.com/unok/mozc.git
-	branch = patch-myime
+	branch = patch-myime-next
 [submodule "src/AzooKeyKanaKanjiConverter/Sources/KanaKanjiConverterModuleWithDefaultDictionary/azooKey_dictionary_storage"]
 	path = src/AzooKeyKanaKanjiConverter/Sources/KanaKanjiConverterModuleWithDefaultDictionary/azooKey_dictionary_storage
 	url = https://github.com/azooKey/azooKey_dictionary_storage.git
