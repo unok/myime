@@ -223,7 +223,7 @@ echo ----------------------------------------------
 set "LLAMA_DIR=%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows"
 if exist "%LLAMA_DIR%" (
     echo   Path: %LLAMA_DIR%
-    for %%f in (ggml.dll ggml-base.dll ggml-cpu.dll ggml-vulkan.dll llama.dll) do (
+    for %%f in (ggml.dll ggml-base.dll ggml-cpu.dll llama.dll) do (
         if exist "%LLAMA_DIR%\%%f" (
             echo     [OK] %%f
         ) else (
