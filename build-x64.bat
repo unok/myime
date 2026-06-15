@@ -256,7 +256,7 @@ echo.
 set "LLAMA_BUILD=%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows"
 if exist "%LLAMA_BUILD%" (
     echo Copying x64 llama.cpp DLLs...
-    for %%f in (ggml.dll ggml-base.dll ggml-cpu.dll ggml-vulkan.dll llama.dll) do (
+    for %%f in (ggml.dll ggml-base.dll ggml-cpu.dll llama.dll) do (
         if exist "%LLAMA_BUILD%\%%f" (
             copy /y "%LLAMA_BUILD%\%%f" "%OUTPUT_DIR%\" >nul
             echo   Copied: %%f

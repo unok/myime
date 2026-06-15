@@ -28,8 +28,8 @@ $libDir = "src\AzooKeyKanaKanjiConverter\lib\windows"
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 New-Item -ItemType Directory -Force -Path $libDir | Out-Null
 
-# DLLs to copy
-$dlls = @("ggml.dll", "ggml-base.dll", "ggml-cpu.dll", "ggml-vulkan.dll", "llama.dll")
+# DLLs to copy (CPU backend only — Vulkan disabled, see build-llama-cpp.bat)
+$dlls = @("ggml.dll", "ggml-base.dll", "ggml-cpu.dll", "llama.dll")
 
 Write-Host "Copying llama.cpp DLLs for $Arch..."
 
