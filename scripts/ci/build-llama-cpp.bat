@@ -2,7 +2,7 @@
 setlocal EnableDelayedExpansion
 
 :: ============================================
-:: Build llama.cpp with Vulkan support
+:: Build llama.cpp (CPU backend only)
 :: Usage: build-llama-cpp.bat <arch> <version> <output_dir>
 ::   arch: x64 or ARM64
 ::   version: llama.cpp release tag (default: scripts/llama-cpp-version.env)
@@ -11,6 +11,10 @@ setlocal EnableDelayedExpansion
 :: NOTE: ソースは vanilla llama.cpp ではなく Zenzai 用トークナイザパッチ
 :: (LLAMA_VOCAB_PRE_TYPE_GPT2_SMALL_JAPANESE_CHAR) 入りの fork を使う。
 :: リポジトリとバージョンの正準定義は scripts/llama-cpp-version.env
+::
+:: バックエンドは CPU 専用 (GGML_VULKAN=OFF)。Vulkan を有効にすると
+:: ggml-vulkan.dll が肥大化し、一部 GPU 環境で初回シェーダ構築が高負荷に
+:: なり変換が返らない問題があったため (動作実績のあるローカル版も実行時 CPU 推論)。
 :: ============================================
 
 set "ARCH=%~1"
@@ -73,7 +77,7 @@ cd llama.cpp-src
 echo Configuring CMake for %CMAKE_ARCH%...
 cmake -B build -G "Visual Studio 17 2022" -A %CMAKE_ARCH% %CMAKE_TOOLCHAIN% ^
     -DCMAKE_BUILD_TYPE=Release ^
-    -DGGML_VULKAN=ON ^
+    -DGGML_VULKAN=OFF ^
     -DLLAMA_BUILD_TESTS=OFF ^
     -DLLAMA_BUILD_EXAMPLES=OFF ^
     -DLLAMA_BUILD_SERVER=OFF ^
@@ -86,8 +90,8 @@ if !ERRORLEVEL! NEQ 0 (
     exit /b 1
 )
 
-echo Building core libraries (llama, ggml, ggml-base, ggml-cpu, ggml-vulkan)...
-cmake --build build --config Release --parallel --target llama ggml ggml-base ggml-cpu ggml-vulkan
+echo Building core libraries (llama, ggml, ggml-base, ggml-cpu)...
+cmake --build build --config Release --parallel --target llama ggml ggml-base ggml-cpu
 if !ERRORLEVEL! NEQ 0 (
     echo [ERROR] Build failed
     cd ..
@@ -104,7 +108,6 @@ copy /y build\src\Release\llama.lib "..\%OUTPUT_DIR%\"
 copy /y build\ggml\src\Release\ggml.lib "..\%OUTPUT_DIR%\"
 copy /y build\ggml\src\Release\ggml-base.lib "..\%OUTPUT_DIR%\"
 copy /y build\ggml\src\Release\ggml-cpu.lib "..\%OUTPUT_DIR%\"
-copy /y build\ggml\src\ggml-vulkan\Release\ggml-vulkan.lib "..\%OUTPUT_DIR%\"
 
 :: Show what was copied
 echo Verifying copied files:
