@@ -26,5 +26,15 @@ echo Restart mozc_server to apply the change. You can run restart-ime.bat or re-
 exit /b 0
 
 :status
-reg query "%KEY%" /v "%VALUE%"
-exit /b %errorlevel%
+set "CUR="
+for /f "tokens=3" %%a in ('reg query "%KEY%" /v "%VALUE%" 2^>nul ^| findstr /i "%VALUE%"') do set "CUR=%%a"
+if not defined CUR (
+    echo ZenzaiEnabled is not set. Zenzai is ENABLED ^(default^).
+    exit /b 0
+)
+if "%CUR%"=="0x0" (
+    echo Zenzai is DISABLED ^(ZenzaiEnabled=0^).
+) else (
+    echo Zenzai is ENABLED ^(ZenzaiEnabled=%CUR%^).
+)
+exit /b 0
