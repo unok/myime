@@ -5,5 +5,5 @@ includedir=${prefix}/Sources/llama.cpp/include
 Name: llama.cpp
 Description: LLaMA C++ library
 Version: 1.0
-Libs: -L${libdir} -lllama -lggml -lggml-base -lggml-cpu
+Libs: -L${libdir} -lllama -lggml -lggml-base
 Cflags: -I${includedir}

@@ -12,9 +12,9 @@ setlocal EnableDelayedExpansion
 :: (LLAMA_VOCAB_PRE_TYPE_GPT2_SMALL_JAPANESE_CHAR) 入りの fork を使う。
 :: リポジトリとバージョンの正準定義は scripts/llama-cpp-version.env
 ::
-:: バックエンドは CPU 専用 (GGML_VULKAN=OFF)。Vulkan を有効にすると
-:: ggml-vulkan.dll が肥大化し、一部 GPU 環境で初回シェーダ構築が高負荷に
-:: なり変換が返らない問題があったため (動作実績のあるローカル版も実行時 CPU 推論)。
+:: Backend layout is CPU-only with dynamic backend loading.
+:: GGML_BACKEND_DL=ON detaches ggml-cpu.dll from ggml.dll, and the app
+:: loads ggml-cpu.dll explicitly at runtime. GGML_VULKAN stays OFF for now.
 :: ============================================
 
 set "ARCH=%~1"
@@ -23,6 +23,12 @@ set "OUTPUT_DIR=%~3"
 
 :: Load pinned llama.cpp source (single source of truth)
 for /f "usebackq tokens=1,* delims==" %%a in ("%~dp0..\llama-cpp-version.env") do set "%%a=%%b"
+
+:: Some shells collapse an empty second argument; keep the documented call safe.
+if "%OUTPUT_DIR%"=="" if /i "%VERSION%"=="llama.cpp-build" (
+    set "OUTPUT_DIR=%VERSION%"
+    set "VERSION="
+)
 
 if "%ARCH%"=="" set "ARCH=x64"
 if "%VERSION%"=="" set "VERSION=%LLAMA_CPP_VERSION%"
@@ -78,6 +84,11 @@ echo Configuring CMake for %CMAKE_ARCH%...
 cmake -B build -G "Visual Studio 17 2022" -A %CMAKE_ARCH% %CMAKE_TOOLCHAIN% ^
     -DCMAKE_BUILD_TYPE=Release ^
     -DGGML_VULKAN=OFF ^
+    -DGGML_BACKEND_DL=ON ^
+    -DGGML_NATIVE=OFF ^
+    -DGGML_AVX2=ON ^
+    -DGGML_FMA=ON ^
+    -DGGML_F16C=ON ^
     -DLLAMA_BUILD_TESTS=OFF ^
     -DLLAMA_BUILD_EXAMPLES=OFF ^
     -DLLAMA_BUILD_SERVER=OFF ^
@@ -104,10 +115,10 @@ copy /y build\bin\Release\*.dll "..\%OUTPUT_DIR%\" >nul 2>&1
 
 :: .lib files - paths verified for b4500
 echo Copying .lib files...
+del /q "..\%OUTPUT_DIR%\ggml-cpu.lib" 2>nul
 copy /y build\src\Release\llama.lib "..\%OUTPUT_DIR%\"
 copy /y build\ggml\src\Release\ggml.lib "..\%OUTPUT_DIR%\"
 copy /y build\ggml\src\Release\ggml-base.lib "..\%OUTPUT_DIR%\"
-copy /y build\ggml\src\Release\ggml-cpu.lib "..\%OUTPUT_DIR%\"
 
 :: Show what was copied
 echo Verifying copied files:

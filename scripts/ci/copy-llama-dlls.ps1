@@ -23,16 +23,21 @@ if ($Arch -eq "x64") {
 }
 # Always use lib/windows for .lib files (Swift Package.swift references this path)
 $libDir = "src\AzooKeyKanaKanjiConverter\lib\windows"
+$versionFile = "scripts\llama-cpp-version.env"
+$llamaCppVersion = (Get-Content $versionFile | Where-Object { $_ -match "^LLAMA_CPP_VERSION=" } | Select-Object -First 1) -replace "^LLAMA_CPP_VERSION=", ""
+$buildMarker = "$llamaCppVersion-dl-cpu"
 
 # Create directories
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 New-Item -ItemType Directory -Force -Path $libDir | Out-Null
 
-# DLLs to copy (CPU backend only — Vulkan disabled, see build-llama-cpp.bat)
+# DLLs to copy (CPU backend only; Vulkan disabled, see build-llama-cpp.bat)
 $dlls = @("ggml.dll", "ggml-base.dll", "ggml-cpu.dll", "llama.dll")
+$libs = @("llama.lib", "ggml.lib", "ggml-base.lib")
 
 Write-Host "Copying llama.cpp DLLs for $Arch..."
 
+$missingDlls = @()
 foreach ($dll in $dlls) {
     $src = Join-Path $SourceDir $dll
     if (Test-Path $src) {
@@ -40,14 +45,32 @@ foreach ($dll in $dlls) {
         Copy-Item $src -Destination $libDir -Force
         Write-Host "  Copied: $dll"
     } else {
-        Write-Host "  Warning: $dll not found at $src"
+        $missingDlls += $src
     }
 }
 
-# Copy .lib files for linking
-Get-ChildItem -Path $SourceDir -Filter "*.lib" -ErrorAction SilentlyContinue | ForEach-Object {
-    Copy-Item $_.FullName -Destination $libDir -Force
-    Write-Host "  Copied lib: $($_.Name)"
+if ($missingDlls.Count -gt 0) {
+    throw "Missing llama.cpp DLLs: $($missingDlls -join ', ')"
 }
+
+# Copy .lib files for linking. ggml-cpu.lib is not generated with GGML_BACKEND_DL=ON.
+Remove-Item -Path (Join-Path $libDir "ggml-cpu.lib") -ErrorAction SilentlyContinue
+$missingLibs = @()
+foreach ($lib in $libs) {
+    $src = Join-Path $SourceDir $lib
+    if (Test-Path $src) {
+        Copy-Item $src -Destination $libDir -Force
+        Write-Host "  Copied lib: $lib"
+    } else {
+        $missingLibs += $src
+    }
+}
+
+if ($missingLibs.Count -gt 0) {
+    throw "Missing llama.cpp import libs: $($missingLibs -join ', ')"
+}
+
+Set-Content -Path (Join-Path $libDir ".myime-llama-build") -Value $buildMarker -NoNewline
+Write-Host "  Wrote build marker: $buildMarker"
 
 Write-Host "Done."

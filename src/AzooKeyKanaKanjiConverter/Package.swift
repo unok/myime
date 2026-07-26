@@ -171,7 +171,6 @@ targets.append(
             .linkedLibrary("llama", .when(platforms: [.windows], traits: ["Zenzai", "ZenzaiCPU"])),
             .linkedLibrary("ggml", .when(platforms: [.windows], traits: ["Zenzai", "ZenzaiCPU"])),
             .linkedLibrary("ggml-base", .when(platforms: [.windows], traits: ["Zenzai", "ZenzaiCPU"])),
-            .linkedLibrary("ggml-cpu", .when(platforms: [.windows], traits: ["Zenzai", "ZenzaiCPU"])),
             .unsafeFlags(["-Llib/windows"], .when(platforms: [.windows], traits: ["Zenzai", "ZenzaiCPU"]))
         ]
     )

@@ -155,10 +155,17 @@ if defined SWIFT_RUNTIME_FOUND (
 echo.
 echo Checking llama.cpp dependencies...
 set "LLAMA_BUILD=%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows"
-if exist "%LLAMA_BUILD%\llama.lib" (
+for /f "usebackq tokens=1,* delims==" %%a in ("%ROOT_DIR%scripts\llama-cpp-version.env") do set "%%a=%%b"
+set "LLAMA_MARKER=%LLAMA_BUILD%\.myime-llama-build"
+set "LLAMA_EXPECTED_BUILD=%LLAMA_CPP_VERSION%-dl-cpu"
+set "LLAMA_ACTUAL_BUILD="
+set "LLAMA_REBUILD=1"
+if exist "%LLAMA_MARKER%" set /p LLAMA_ACTUAL_BUILD=<"%LLAMA_MARKER%"
+if exist "%LLAMA_BUILD%\llama.lib" if "%LLAMA_ACTUAL_BUILD%"=="%LLAMA_EXPECTED_BUILD%" set "LLAMA_REBUILD=0"
+if "%LLAMA_REBUILD%"=="0" (
     echo   [OK] llama.cpp x64 libs found
 ) else (
-    echo   llama.cpp libs not found. Building from source...
+    echo   llama.cpp libs not found or stale. Building from source...
     :: バージョンは scripts\llama-cpp-version.env で一元管理（第2引数を空にすると同ファイルの値を使用）
     call "%ROOT_DIR%scripts\ci\build-llama-cpp.bat" x64 "" llama.cpp-build
     if !ERRORLEVEL! NEQ 0 (
