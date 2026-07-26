@@ -331,7 +331,13 @@ echo   Bazel build completed successfully
 :: Copy MSI to root
 set "MSI_PATH=%MOZC_SRC%\bazel-bin\win32\installer\Mozc_x64.msi"
 if exist "%MSI_PATH%" (
+    if exist "%ROOT_DIR%Mozc_x64.msi" attrib -r "%ROOT_DIR%Mozc_x64.msi"
     copy /y "%MSI_PATH%" "%ROOT_DIR%Mozc_x64.msi" >nul
+    if !ERRORLEVEL! NEQ 0 (
+        echo [ERROR] Failed to copy MSI to root: %ROOT_DIR%Mozc_x64.msi
+        goto :fail_pop2
+    )
+    attrib -r "%ROOT_DIR%Mozc_x64.msi"
     echo.
     echo x64 MSI installer created: %ROOT_DIR%Mozc_x64.msi
 ) else (
