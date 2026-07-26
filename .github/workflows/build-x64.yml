@@ -152,10 +152,20 @@ jobs:
         working-directory: mozc/src
         run: python build_tools/update_deps.py --noqt --nollvm --nomsys2 --nondk
 
+      - name: Compute Mozc auto version
+        shell: bash
+        run: |
+          days=$(( ($(date -u +%s) - $(date -u -d 2009-05-24 +%s)) / 86400 ))
+          revision=$(date -u +%H%M)
+          revision=$((10#$revision))
+          version="3.33.${days}.${revision}"
+          echo "MOZC_AUTO_VERSION=${version}" >> "$GITHUB_ENV"
+          echo "MOZC_AUTO_VERSION=${version}"
+
       - name: Build Mozc x64 MSI
         shell: cmd
         working-directory: mozc/src
-        run: bazelisk build --repository_cache=%GITHUB_WORKSPACE%\.bazel-repo-cache --config=oss_windows --spawn_strategy=local //win32/installer:installer_x64
+        run: bazelisk build --repository_cache=%GITHUB_WORKSPACE%\.bazel-repo-cache --config=oss_windows --spawn_strategy=local --action_env=MOZC_VERSION=%MOZC_AUTO_VERSION% //win32/installer:installer_x64
 
       - name: Copy MSI
         run: copy mozc\src\bazel-bin\win32\installer\Mozc_x64.msi .

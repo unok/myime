@@ -320,7 +320,9 @@ echo Building x64 MSI installer with Bazel (this may take several minutes)...
 echo   Output is being logged to: %ROOT_DIR%build-mozc.log
 :: NOTE: 以前あった UACインストーラ検出回避 (__COMPAT_LAYER=RunAsInvoker) は、
 :: upstream がビルドツールを build_msi に改名して解決済みのため削除 (mozc#1519)
-bazelisk build --config=oss_windows --spawn_strategy=local //win32/installer:installer_x64 > "%ROOT_DIR%build-mozc.log" 2>&1
+for /f "usebackq delims=" %%V in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$epoch=[datetime]'2009-05-24T00:00:00Z'; $now=(Get-Date).ToUniversalTime(); $days=[int](($now.Date - $epoch).TotalDays); $revision=[int]$now.ToString('HHmm'); '3.33.{0}.{1}' -f $days,$revision"`) do set "MOZC_AUTO_VERSION=%%V"
+echo   Mozc version override: %MOZC_AUTO_VERSION%
+bazelisk build --config=oss_windows --spawn_strategy=local --action_env=MOZC_VERSION=%MOZC_AUTO_VERSION% //win32/installer:installer_x64 > "%ROOT_DIR%build-mozc.log" 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Bazel x64 build failed
     echo   See build-mozc.log for details
