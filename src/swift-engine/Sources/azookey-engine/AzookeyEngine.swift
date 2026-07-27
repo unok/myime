@@ -82,7 +82,10 @@ private func getTypoOptions() -> ConvertRequestOptions {
 
 /// Build the candidates JSON for the current `currentCandidates` (caller must hold engineLock)
 private func candidatesJson() -> UnsafePointer<CChar>? {
-    // correspondingCount is the number of hiragana characters this candidate covers
+    // correspondingCount is the number of hiragana characters this candidate covers.
+    // Normal candidates report their own rubyCount; typo-corrected candidates instead
+    // report the ORIGINAL key length so that selecting one replaces the whole segment
+    // (the corrected reading's rubyCount may differ from the typed key).
     var candidateObjects = currentCandidates.map { candidate -> [String: Any] in
         return [
             "text": candidate.text,

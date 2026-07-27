@@ -92,8 +92,10 @@ enum TypoCorrectionReadingGenerator {
             }
             for vowel in vowels {
                 if let kana = romajiToKana(String([ascii, vowel])) {
+                    // kana は「あい」のような複数文字になり得るため
+                    // Character 変換ではなく部分置換で扱う
                     var replaced = chars
-                    replaced[index] = Character(kana)
+                    replaced.replaceSubrange(index...index, with: Array(kana))
                     candidates.append(String(replaced))
                 }
             }
