@@ -2,6 +2,9 @@
 // Zenzai/ZenzaiCPU が有効でない場合、llama-mock.swift の実装が利用される
 import llama
 #endif
+#if os(Windows)
+import WinSDK
+#endif
 
 import Algorithms
 import EfficientNGram
@@ -102,7 +105,53 @@ final class ZenzContext {
         return ctx_params
     }
 
+    #if (Zenzai || ZenzaiCPU) && os(Windows)
+    // static let の遅延初期化はスレッドセーフに一度だけ実行されるため、
+    // ロックや可変フラグなしでプロセス内一回のロードを保証できる
+    private static let cpuBackendLoaded: Bool = {
+        let llamaModule = "llama.dll".withCString(encodedAs: UTF16.self) {
+            GetModuleHandleW($0)
+        }
+        guard let llamaModule else {
+            debug("Could not find llama.dll while loading ggml-cpu.dll")
+            return false
+        }
+
+        var modulePathBuffer = [WCHAR](repeating: 0, count: Int(MAX_PATH))
+        let modulePathLength = modulePathBuffer.withUnsafeMutableBufferPointer {
+            GetModuleFileNameW(llamaModule, $0.baseAddress, DWORD($0.count))
+        }
+        guard modulePathLength > 0 && modulePathLength < modulePathBuffer.count else {
+            debug("Could not resolve llama.dll path while loading ggml-cpu.dll")
+            return false
+        }
+
+        let modulePath = modulePathBuffer.withUnsafeBufferPointer {
+            String(decoding: $0.prefix(Int(modulePathLength)), as: UTF16.self)
+        }
+        guard let separatorIndex = modulePath.lastIndex(where: { $0 == "\\" || $0 == "/" }) else {
+            debug("Could not resolve llama.dll directory while loading ggml-cpu.dll")
+            return false
+        }
+        let cpuBackendPath = "\(modulePath[..<separatorIndex])\\ggml-cpu.dll"
+
+        let backend = cpuBackendPath.withCString {
+            ggml_backend_load($0)
+        }
+        guard backend != nil else {
+            debug("Could not load ggml-cpu.dll at \(cpuBackendPath)")
+            return false
+        }
+        return true
+    }()
+    #endif
+
     static func createContext(path: String) throws -> ZenzContext {
+        #if (Zenzai || ZenzaiCPU) && os(Windows)
+        if !Self.cpuBackendLoaded {
+            debug("CPU backend is not loaded; Zenzai model load will likely fail")
+        }
+        #endif
         llama_backend_init()
         var model_params = llama_model_default_params()
         model_params.use_mmap = true
@@ -138,6 +187,11 @@ final class ZenzContext {
     }
 
     func reset_context() throws {
+        #if (Zenzai || ZenzaiCPU) && os(Windows)
+        if !Self.cpuBackendLoaded {
+            debug("CPU backend is not loaded; Zenzai context reset will likely fail")
+        }
+        #endif
         llama_free(self.context)
         var params = Self.ctx_params
         #if ZenzaiCPU

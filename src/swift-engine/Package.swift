@@ -28,7 +28,6 @@ let package = Package(
                 .linkedLibrary("llama", .when(platforms: [.windows])),
                 .linkedLibrary("ggml", .when(platforms: [.windows])),
                 .linkedLibrary("ggml-base", .when(platforms: [.windows])),
-                .linkedLibrary("ggml-cpu", .when(platforms: [.windows])),
                 .unsafeFlags(["-L../AzooKeyKanaKanjiConverter/lib/windows"], .when(platforms: [.windows]))
             ]
         ),

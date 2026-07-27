@@ -78,7 +78,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: llama.cpp-build
-          key: llama-cpp-windows-x64-cpu-${{ env.LLAMA_CPP_VERSION }}
+          key: llama-cpp-windows-x64-dl-${{ env.LLAMA_CPP_VERSION }}
 
       - name: Create build directories
         run: mkdir -p build/x64/release
