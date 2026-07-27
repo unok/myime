@@ -25,6 +25,7 @@ int main() {
         "ggml.dll",
         "ggml-base.dll",
         "ggml-cpu.dll",
+        "ggml-vulkan.dll",
         "llama.dll",
         "llava_shared.dll",
         "mtmd.dll",

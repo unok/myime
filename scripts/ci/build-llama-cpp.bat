@@ -2,19 +2,20 @@
 setlocal EnableDelayedExpansion
 
 :: ============================================
-:: Build llama.cpp (CPU backend only)
+:: Build llama.cpp (CPU + Vulkan module, dynamic loading; Vulkan unused by default)
 :: Usage: build-llama-cpp.bat <arch> <version> <output_dir>
 ::   arch: x64 or ARM64
 ::   version: llama.cpp release tag (default: scripts/llama-cpp-version.env)
 ::   output_dir: directory to copy DLLs to
 ::
-:: NOTE: ソースは vanilla llama.cpp ではなく Zenzai 用トークナイザパッチ
-:: (LLAMA_VOCAB_PRE_TYPE_GPT2_SMALL_JAPANESE_CHAR) 入りの fork を使う。
-:: リポジトリとバージョンの正準定義は scripts/llama-cpp-version.env
+:: NOTE: This builds the pinned MyIME llama.cpp fork, not vanilla llama.cpp.
+:: The fork carries the Zenzai tokenizer patch
+:: (LLAMA_VOCAB_PRE_TYPE_GPT2_SMALL_JAPANESE_CHAR).
+:: Repository and version are defined in scripts/llama-cpp-version.env.
 ::
-:: Backend layout is CPU-only with dynamic backend loading.
-:: GGML_BACKEND_DL=ON detaches ggml-cpu.dll from ggml.dll, and the app
-:: loads ggml-cpu.dll explicitly at runtime. GGML_VULKAN stays OFF for now.
+:: Backend layout uses dynamic backend loading for CPU plus Vulkan module.
+:: GGML_BACKEND_DL=ON detaches backend DLLs from ggml.dll. The app currently
+:: loads ggml-cpu.dll explicitly; ggml-vulkan.dll is packaged but not loaded.
 :: ============================================
 
 set "ARCH=%~1"
@@ -83,7 +84,7 @@ cd llama.cpp-src
 echo Configuring CMake for %CMAKE_ARCH%...
 cmake -B build -G "Visual Studio 17 2022" -A %CMAKE_ARCH% %CMAKE_TOOLCHAIN% ^
     -DCMAKE_BUILD_TYPE=Release ^
-    -DGGML_VULKAN=OFF ^
+    -DGGML_VULKAN=ON ^
     -DGGML_BACKEND_DL=ON ^
     -DGGML_NATIVE=OFF ^
     -DGGML_AVX2=ON ^
@@ -101,8 +102,8 @@ if !ERRORLEVEL! NEQ 0 (
     exit /b 1
 )
 
-echo Building core libraries (llama, ggml, ggml-base, ggml-cpu)...
-cmake --build build --config Release --parallel --target llama ggml ggml-base ggml-cpu
+echo Building core libraries (llama, ggml, ggml-base, ggml-cpu, ggml-vulkan)...
+cmake --build build --config Release --parallel --target llama ggml ggml-base ggml-cpu ggml-vulkan
 if !ERRORLEVEL! NEQ 0 (
     echo [ERROR] Build failed
     cd ..

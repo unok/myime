@@ -25,14 +25,14 @@ if ($Arch -eq "x64") {
 $libDir = "src\AzooKeyKanaKanjiConverter\lib\windows"
 $versionFile = "scripts\llama-cpp-version.env"
 $llamaCppVersion = (Get-Content $versionFile | Where-Object { $_ -match "^LLAMA_CPP_VERSION=" } | Select-Object -First 1) -replace "^LLAMA_CPP_VERSION=", ""
-$buildMarker = "$llamaCppVersion-dl-cpu"
+$buildMarker = "$llamaCppVersion-dl-vulkan"
 
 # Create directories
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 New-Item -ItemType Directory -Force -Path $libDir | Out-Null
 
-# DLLs to copy (CPU backend only; Vulkan disabled, see build-llama-cpp.bat)
-$dlls = @("ggml.dll", "ggml-base.dll", "ggml-cpu.dll", "llama.dll")
+# DLLs to copy (Vulkan is packaged as a dynamically loaded module; not loaded by default)
+$dlls = @("ggml.dll", "ggml-base.dll", "ggml-cpu.dll", "ggml-vulkan.dll", "llama.dll")
 $libs = @("llama.lib", "ggml.lib", "ggml-base.lib")
 
 Write-Host "Copying llama.cpp DLLs for $Arch..."

@@ -157,7 +157,7 @@ echo Checking llama.cpp dependencies...
 set "LLAMA_BUILD=%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows"
 for /f "usebackq tokens=1,* delims==" %%a in ("%ROOT_DIR%scripts\llama-cpp-version.env") do set "%%a=%%b"
 set "LLAMA_MARKER=%LLAMA_BUILD%\.myime-llama-build"
-set "LLAMA_EXPECTED_BUILD=%LLAMA_CPP_VERSION%-dl-cpu"
+set "LLAMA_EXPECTED_BUILD=%LLAMA_CPP_VERSION%-dl-vulkan"
 set "LLAMA_ACTUAL_BUILD="
 set "LLAMA_REBUILD=1"
 if exist "%LLAMA_MARKER%" set /p LLAMA_ACTUAL_BUILD=<"%LLAMA_MARKER%"
@@ -263,7 +263,7 @@ echo.
 set "LLAMA_BUILD=%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows"
 if exist "%LLAMA_BUILD%" (
     echo Copying x64 llama.cpp DLLs...
-    for %%f in (ggml.dll ggml-base.dll ggml-cpu.dll llama.dll) do (
+    for %%f in (ggml.dll ggml-base.dll ggml-cpu.dll ggml-vulkan.dll llama.dll) do (
         if exist "%LLAMA_BUILD%\%%f" (
             copy /y "%LLAMA_BUILD%\%%f" "%OUTPUT_DIR%\" >nul
             echo   Copied: %%f
