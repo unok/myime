@@ -9,9 +9,11 @@ import KanaKanjiConverterModuleWithDefaultDictionary
 // 複数スレッドで呼ばれても状態が混線しないようにするため。
 nonisolated(unsafe) private let engineLock = NSLock()
 nonisolated(unsafe) private var converter: KanaKanjiConverter?
+nonisolated(unsafe) private var typoConverter: KanaKanjiConverter?
 nonisolated(unsafe) private var initCount = 0
 nonisolated(unsafe) private var composingText = ComposingText()
 nonisolated(unsafe) private var currentCandidates: [Candidate] = []
+nonisolated(unsafe) private var currentTypoCandidates: [TypoCandidate] = []
 nonisolated(unsafe) private var config = EngineConfig()
 nonisolated(unsafe) private var zenzaiWarmUpStarted = false
 // TextReplacer (絵文字辞書の読み込みを伴う) は高コストなので変換毎に作らずキャッシュする
@@ -25,6 +27,14 @@ struct EngineConfig {
     var zenzaiUseGpu: Bool = false
     var zenzaiInferenceLimit: Int = 10
     var zenzaiWeightPath: String = ""
+    var typoCorrectionEnabled: Bool = false
+}
+
+private struct TypoCandidate {
+    let text: String
+    let value: PValue
+    let correspondingCount: Int
+    let correctedReading: String
 }
 
 /// Get conversion options (caller must hold engineLock)
@@ -62,15 +72,31 @@ private func getOptions(allowLearning: Bool = true) -> ConvertRequestOptions {
     )
 }
 
+/// Get conversion options for typo correction pass (caller must hold engineLock)
+private func getTypoOptions() -> ConvertRequestOptions {
+    var options = getOptions(allowLearning: false)
+    options.learningType = .nothing
+    options.zenzaiMode = .off
+    return options
+}
+
 /// Build the candidates JSON for the current `currentCandidates` (caller must hold engineLock)
 private func candidatesJson() -> UnsafePointer<CChar>? {
     // correspondingCount is the number of hiragana characters this candidate covers
-    let candidateObjects = currentCandidates.map { candidate -> [String: Any] in
+    var candidateObjects = currentCandidates.map { candidate -> [String: Any] in
         return [
             "text": candidate.text,
             "correspondingCount": candidate.rubyCount
         ]
     }
+    candidateObjects.append(contentsOf: currentTypoCandidates.map { candidate -> [String: Any] in
+        return [
+            "text": candidate.text,
+            "correspondingCount": candidate.correspondingCount,
+            "typoCorrected": true,
+            "correctedReading": candidate.correctedReading
+        ]
+    })
 
     guard let jsonData = try? JSONSerialization.data(withJSONObject: candidateObjects),
           let jsonString = String(data: jsonData, encoding: .utf8) else {
@@ -151,15 +177,18 @@ public func initialize(_ dictionaryPath: UnsafePointer<CChar>?, _ memoryPath: Un
         }
     }
 
+    let dicdataStore: DicdataStore
     if config.dictionaryPath.isEmpty {
-        converter = KanaKanjiConverter.withDefaultDictionary()
+        dicdataStore = DicdataStore.withDefaultDictionary()
     } else {
         let dictURL = URL(fileURLWithPath: config.dictionaryPath)
-        let dicdataStore = DicdataStore(dictionaryURL: dictURL)
-        converter = KanaKanjiConverter(dicdataStore: dicdataStore)
+        dicdataStore = DicdataStore(dictionaryURL: dictURL)
     }
+    converter = KanaKanjiConverter(dicdataStore: dicdataStore)
+    typoConverter = KanaKanjiConverter(dicdataStore: dicdataStore)
     composingText = ComposingText()
     currentCandidates = []
+    currentTypoCandidates = []
 
     initCount += 1
     let initialized = converter != nil
@@ -209,8 +238,10 @@ public func shutdown() {
     initCount = max(0, initCount - 1)
     if initCount == 0 {
         converter = nil
+        typoConverter = nil
         composingText = ComposingText()
         currentCandidates = []
+        currentTypoCandidates = []
         cachedTextReplacer = nil
         zenzaiWarmUpStarted = false
     }
@@ -237,8 +268,56 @@ public func convertText(_ key: UnsafePointer<CChar>?, _ allowLearning: Int32) ->
     let result = conv.requestCandidates(text, options: getOptions(allowLearning: allowLearning != 0))
     composingText = text
     currentCandidates = result.mainResults
+    currentTypoCandidates = makeTypoCandidates(for: keyString, existingCandidates: currentCandidates)
 
     return candidatesJson()
+}
+
+/// Build typo-correction candidates via an isolated second converter (caller must hold engineLock).
+private func makeTypoCandidates(for key: String, existingCandidates: [Candidate]) -> [TypoCandidate] {
+    guard config.typoCorrectionEnabled, let typoConv = typoConverter else {
+        return []
+    }
+
+    let existingTexts = Set(existingCandidates.map(\.text))
+    var typoCandidates: [TypoCandidate] = []
+    let typoOptions = getTypoOptions()
+    let originalKeyCount = key.count
+
+    for correctedReading in TypoCorrectionReadingGenerator.generateCandidates(for: key) {
+        var text = ComposingText()
+        text.insertAtCursorPosition(correctedReading, inputStyle: .direct)
+        let result = typoConv.requestCandidates(text, options: typoOptions)
+
+        for candidate in result.mainResults {
+            guard candidate.text != correctedReading,
+                  !existingTexts.contains(candidate.text) else {
+                continue
+            }
+            typoCandidates.append(TypoCandidate(
+                text: candidate.text,
+                value: candidate.value,
+                correspondingCount: originalKeyCount,
+                correctedReading: correctedReading
+            ))
+            break
+        }
+    }
+
+    var seenTexts = existingTexts
+    var filteredCandidates: [TypoCandidate] = []
+    for candidate in typoCandidates.sorted(by: { $0.value > $1.value }) {
+        guard !seenTexts.contains(candidate.text) else {
+            continue
+        }
+        seenTexts.insert(candidate.text)
+        filteredCandidates.append(candidate)
+        if filteredCandidates.count == 3 {
+            break
+        }
+    }
+
+    return filteredCandidates
 }
 
 @_silgen_name("AppendText")
@@ -275,6 +354,7 @@ public func clearText() {
     defer { engineLock.unlock() }
     composingText = ComposingText()
     currentCandidates = []
+    currentTypoCandidates = []
 }
 
 @_silgen_name("GetComposedText")
@@ -285,6 +365,7 @@ public func getComposedText() -> UnsafePointer<CChar>? {
 
     let result = conv.requestCandidates(composingText, options: getOptions())
     currentCandidates = result.mainResults
+    currentTypoCandidates = []
 
     // Return best candidate
     guard let first = currentCandidates.first else {
@@ -302,6 +383,7 @@ public func getCandidates() -> UnsafePointer<CChar>? {
 
     let result = conv.requestCandidates(composingText, options: getOptions())
     currentCandidates = result.mainResults
+    currentTypoCandidates = []
 
     return candidatesJson()
 }
@@ -322,6 +404,7 @@ public func selectCandidate(_ index: Int32) {
     // Clear composing text after selection
     composingText = ComposingText()
     currentCandidates = []
+    currentTypoCandidates = []
 }
 
 @_silgen_name("ShrinkText")
@@ -361,6 +444,13 @@ public func setZenzaiWeightPath(_ path: UnsafePointer<CChar>?) {
     defer { engineLock.unlock() }
     config.zenzaiWeightPath = String(cString: path)
     scheduleZenzaiWarmUpIfNeeded()
+}
+
+@_silgen_name("SetTypoCorrectionEnabled")
+public func setTypoCorrectionEnabled(_ enabled: Bool) {
+    engineLock.lock()
+    defer { engineLock.unlock() }
+    config.typoCorrectionEnabled = enabled
 }
 
 @_silgen_name("GetZenzaiStatus")
