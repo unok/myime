@@ -4,7 +4,7 @@ import SwiftUtils
 
 package final class Zenz {
     package var resourceURL: URL
-    package var useGpu: Bool
+    package let useGpu: Bool
     private var zenzContext: ZenzContext?
     init(resourceURL: URL, useGpu: Bool = false) throws {
         self.resourceURL = resourceURL

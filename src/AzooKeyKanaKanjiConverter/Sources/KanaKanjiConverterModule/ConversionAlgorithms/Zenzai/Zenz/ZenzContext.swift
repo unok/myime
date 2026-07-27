@@ -276,10 +276,6 @@ final class ZenzContext {
         var params = Self.ctx_params
         #if ZenzaiCPU
         params.offload_kqv = false
-        #else
-        if self.useGpu {
-            params.offload_kqv = true
-        }
         #endif
         let context = llama_init_from_model(self.model, params)
         guard let context else {
