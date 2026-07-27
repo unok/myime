@@ -37,6 +37,31 @@ private struct TypoCandidate {
     let correctedReading: String
 }
 
+/// カタカナ→ひらがな折り畳み(表記ゆれ判定用)
+private func foldedToHiragana(_ text: String) -> String {
+    String(String.UnicodeScalarView(text.unicodeScalars.map { scalar in
+        (0x30A1...0x30F6).contains(scalar.value)
+            ? Unicode.Scalar(scalar.value - 0x60)! : scalar
+    }))
+}
+
+/// 読みの表記ゆれ(全カタカナ・混在カナ)にすぎない候補か。
+/// ひらがな恒等(text == reading)は「ひらがな表記が正解の語」があり得るため除外しない
+private func isScriptVariantOfReading(_ text: String, reading: String) -> Bool {
+    text != reading && foldedToHiragana(text) == reading
+}
+
+/// 素のラティスが過大評価しがちな数字・アルファベット混入候補の検出
+private func containsAsciiLikeNoise(_ text: String) -> Bool {
+    text.unicodeScalars.contains { scalar in
+        // ASCII 数字・英字と全角数字・英字
+        (0x30...0x39).contains(scalar.value) || (0x41...0x5A).contains(scalar.value)
+            || (0x61...0x7A).contains(scalar.value)
+            || (0xFF10...0xFF19).contains(scalar.value) || (0xFF21...0xFF3A).contains(scalar.value)
+            || (0xFF41...0xFF5A).contains(scalar.value)
+    }
+}
+
 /// Get conversion options (caller must hold engineLock)
 /// - Parameter allowLearning: false なら学習を無効化する (シークレットモード等)
 private func getOptions(allowLearning: Bool = true) -> ConvertRequestOptions {
@@ -287,29 +312,55 @@ private func makeTypoCandidates(for key: String, existingCandidates: [Candidate]
     let typoOptions = getTypoOptions()
     let originalKeyCount = key.count
 
+    // 長い読みでは未知語スコア(-14.5固定)と実変換の分離ができず、
+    // 2パスのコストも読み数に比例するため、短い読みに限定する
+    guard originalKeyCount <= 8 else {
+        return []
+    }
+
     for correctedReading in TypoCorrectionReadingGenerator.generateCandidates(for: key) {
         var text = ComposingText()
         text.insertAtCursorPosition(correctedReading, inputStyle: .direct)
         let result = typoConv.requestCandidates(text, options: typoOptions)
 
-        for candidate in result.mainResults {
-            guard candidate.text != correctedReading,
-                  !existingTexts.contains(candidate.text) else {
-                continue
+        // mainResults の並びは表記バリエーション(value=-190 の素通し系)が先頭に
+        // 来ることがあるため、先頭ではなく value 最大の候補を選ぶ。
+        // ひらがな表記が正解の語(こんにちは 等)があるため、補正読みと同一の
+        // テキストは除外しない。数字・アルファベット混入(に→2 等の過大評価)は除外
+        let best = result.mainResults
+            .filter {
+                // 補正読み全体をカバーする候補のみ(接頭辞断片を除外)
+                $0.rubyCount == correctedReading.count
+                    && !existingTexts.contains($0.text)
+                    && !containsAsciiLikeNoise($0.text)
+                    && !isScriptVariantOfReading($0.text, reading: correctedReading)
+                    // 未知語素通し(-14.5 固定)の恒等候補を除外。
+                    // 実在語のひらがな恒等(こんにちは 等)は value が明確に良いため残る
+                    && !($0.text == correctedReading && $0.value <= -14)
+                    // 絶対バー: 誤った補正読みの強引な変換(-25 前後)を除外する。
+                    // 実在補正は読み1文字あたり -3.0 より明確に良い(実測 -1.4〜-2.7)
+                    && $0.value > PValue(-3 * correctedReading.count)
             }
+            .max { $0.value < $1.value }
+        if let best {
             typoCandidates.append(TypoCandidate(
-                text: candidate.text,
-                value: candidate.value,
+                text: best.text,
+                value: best.value,
                 correspondingCount: originalKeyCount,
                 correctedReading: correctedReading
             ))
-            break
         }
     }
 
     var seenTexts = existingTexts
     var filteredCandidates: [TypoCandidate] = []
-    for candidate in typoCandidates.sorted(by: { $0.value > $1.value }) {
+    let ranked = typoCandidates.sorted { $0.value > $1.value }
+    // ベストから大きく劣る候補(誤った補正読みの強引な変換)は表示しない
+    let valueCutoff = (ranked.first?.value).map { $0 - 4.0 }
+    for candidate in ranked {
+        if let valueCutoff, candidate.value < valueCutoff {
+            break
+        }
         guard !seenTexts.contains(candidate.text) else {
             continue
         }
