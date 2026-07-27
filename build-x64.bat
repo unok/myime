@@ -233,7 +233,8 @@ echo Copied: azookey-engine.dll
 :: (フォールバック探索: インストーラ形式 / swift.exe隣接 / SDKROOT由来)
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%scripts\ci\copy-swift-runtime.ps1" -OutputDir "%OUTPUT_DIR%"
 if !ERRORLEVEL! NEQ 0 (
-    echo [WARNING] Swift runtime not found - DLLs may be missing
+    echo [ERROR] Swift runtime DLLs missing - see messages above
+    goto :fail_pop2
 )
 
 :: Copy Swift resource bundles (dictionary data)

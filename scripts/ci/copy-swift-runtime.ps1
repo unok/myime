@@ -92,13 +92,21 @@ $dlls = @(
 )
 
 $copied = 0
+$missing = @()
 foreach ($dll in $dlls) {
     $src = Join-Path $foundRuntime $dll
     if (Test-Path $src) {
         Copy-Item $src -Destination $OutputDir -Force
         Write-Host "  Copied: $dll"
         $copied++
+    } else {
+        $missing += $dll
     }
+}
+
+if ($missing.Count -gt 0) {
+    Write-Error "Missing required Swift runtime DLLs in ${foundRuntime}: $($missing -join ', ')"
+    exit 1
 }
 
 Write-Host "Copied $copied Swift Runtime DLLs."
