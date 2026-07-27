@@ -79,13 +79,15 @@ final class ZenzContext {
     private var vocab: OpaquePointer
     private var prevInput: [llama_token] = []
     private var prevPrompt: [llama_token] = []
+    private let useGpu: Bool
 
     private let n_len: Int32 = 512
 
-    init(model: OpaquePointer, context: OpaquePointer, vocab: OpaquePointer) {
+    init(model: OpaquePointer, context: OpaquePointer, vocab: OpaquePointer, useGpu: Bool) {
         self.model = model
         self.context = context
         self.vocab = vocab
+        self.useGpu = useGpu
     }
 
     deinit {
@@ -144,9 +146,46 @@ final class ZenzContext {
         }
         return true
     }()
+
+    private static let vulkanBackendLoaded: Bool = {
+        let llamaModule = "llama.dll".withCString(encodedAs: UTF16.self) {
+            GetModuleHandleW($0)
+        }
+        guard let llamaModule else {
+            debug("Could not find llama.dll while loading ggml-vulkan.dll")
+            return false
+        }
+
+        var modulePathBuffer = [WCHAR](repeating: 0, count: Int(MAX_PATH))
+        let modulePathLength = modulePathBuffer.withUnsafeMutableBufferPointer {
+            GetModuleFileNameW(llamaModule, $0.baseAddress, DWORD($0.count))
+        }
+        guard modulePathLength > 0 && modulePathLength < modulePathBuffer.count else {
+            debug("Could not resolve llama.dll path while loading ggml-vulkan.dll")
+            return false
+        }
+
+        let modulePath = modulePathBuffer.withUnsafeBufferPointer {
+            String(decoding: $0.prefix(Int(modulePathLength)), as: UTF16.self)
+        }
+        guard let separatorIndex = modulePath.lastIndex(where: { $0 == "\\" || $0 == "/" }) else {
+            debug("Could not resolve llama.dll directory while loading ggml-vulkan.dll")
+            return false
+        }
+        let vulkanBackendPath = "\(modulePath[..<separatorIndex])\\ggml-vulkan.dll"
+
+        let backend = vulkanBackendPath.withCString {
+            ggml_backend_load($0)
+        }
+        guard backend != nil else {
+            debug("Could not load ggml-vulkan.dll at \(vulkanBackendPath)")
+            return false
+        }
+        return true
+    }()
     #endif
 
-    static func createContext(path: String) throws -> ZenzContext {
+    static func createContext(path: String, useGpu: Bool = false) throws -> ZenzContext {
         #if (Zenzai || ZenzaiCPU) && os(Windows)
         if !Self.cpuBackendLoaded {
             debug("CPU backend is not loaded; Zenzai model load will likely fail")
@@ -155,13 +194,32 @@ final class ZenzContext {
         llama_backend_init()
         var model_params = llama_model_default_params()
         model_params.use_mmap = true
+        var effectiveUseGpu = false
+        #if Zenzai && os(Windows)
+        effectiveUseGpu = useGpu && Self.vulkanBackendLoaded
+        if useGpu && !effectiveUseGpu {
+            debug("Vulkan backend is not loaded; falling back to CPU")
+        }
+        if effectiveUseGpu {
+            model_params.n_gpu_layers = 999
+        }
+        #endif
         #if ZenzaiCPU
         // CPU 専用: GPU へのオフロードを無効化
         model_params.n_gpu_layers = 0
         model_params.split_mode = LLAMA_SPLIT_MODE_NONE
         #endif
-        let model = llama_model_load_from_file(path, model_params)
-        guard let model else {
+        var loadedModel = llama_model_load_from_file(path, model_params)
+        if loadedModel == nil && effectiveUseGpu {
+            debug("Could not load model with Vulkan; falling back to CPU")
+            effectiveUseGpu = false
+            model_params = llama_model_default_params()
+            model_params.use_mmap = true
+            model_params.n_gpu_layers = 0
+            model_params.split_mode = LLAMA_SPLIT_MODE_NONE
+            loadedModel = llama_model_load_from_file(path, model_params)
+        }
+        guard var model = loadedModel else {
             debug("Could not load model at \(path)")
             throw ZenzError.couldNotLoadModel(path: path)
         }
@@ -171,19 +229,41 @@ final class ZenzContext {
         // CPU 専用: KV / KQV 等の GPU オフロードを完全に無効化
         params.offload_kqv = false
         #endif
-        let context = llama_init_from_model(model, params)
-        guard let context else {
+        var loadedContext = llama_init_from_model(model, params)
+        if loadedContext == nil && effectiveUseGpu {
+            debug("Could not load context with Vulkan; falling back to CPU")
+            llama_model_free(model)
+            effectiveUseGpu = false
+            model_params = llama_model_default_params()
+            model_params.use_mmap = true
+            model_params.n_gpu_layers = 0
+            model_params.split_mode = LLAMA_SPLIT_MODE_NONE
+            guard let cpuModel = llama_model_load_from_file(path, model_params) else {
+                debug("Could not load model at \(path)")
+                throw ZenzError.couldNotLoadModel(path: path)
+            }
+            model = cpuModel
+            params = ctx_params
+            #if ZenzaiCPU
+            params.offload_kqv = false
+            #endif
+            loadedContext = llama_init_from_model(model, params)
+        }
+        guard let context = loadedContext else {
             debug("Could not load context!")
+            llama_model_free(model)
             throw ZenzError.couldNotLoadContext
         }
 
         let vocab = llama_model_get_vocab(model)
         guard let vocab else {
             debug("Could not load vocab!")
+            llama_free(context)
+            llama_model_free(model)
             throw ZenzError.couldNotLoadVocab
         }
 
-        return ZenzContext(model: model, context: context, vocab: vocab)
+        return ZenzContext(model: model, context: context, vocab: vocab, useGpu: effectiveUseGpu)
     }
 
     func reset_context() throws {

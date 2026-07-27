@@ -213,6 +213,7 @@ public struct ConvertRequestOptions: Sendable {
             weightURL: URL(fileURLWithPath: ""),
             inferenceLimit: 10,
             requestRichCandidates: false,
+            useGpu: false,
             versionDependentMode: .v3(.init())
         )
 
@@ -223,13 +224,15 @@ public struct ConvertRequestOptions: Sendable {
         ///    - requestRichCandidates: when this flag is true, the converter spends more time but generate richer N-Best candidates for candidate list view. Usually this option is not recommended for live conversion.
         ///    - personalizationMode: values for personalization.
         ///    - versionDependentMode: specify zenz model version and its configuration.
-        public static func on(weight: URL, inferenceLimit: Int = 10, requestRichCandidates: Bool = false, personalizationMode: PersonalizationMode?, versionDependentMode: ZenzaiVersionDependentMode = .v3(.init())) -> Self {
+        ///    - useGpu: when true, the converter may offload Zenzai inference to GPU.
+        public static func on(weight: URL, inferenceLimit: Int = 10, requestRichCandidates: Bool = false, personalizationMode: PersonalizationMode?, versionDependentMode: ZenzaiVersionDependentMode = .v3(.init()), useGpu: Bool = false) -> Self {
             ZenzaiMode(
                 enabled: true,
                 weightURL: weight,
                 inferenceLimit: inferenceLimit,
                 requestRichCandidates: requestRichCandidates,
                 personalizationMode: personalizationMode,
+                useGpu: useGpu,
                 versionDependentMode: versionDependentMode
             )
         }
@@ -238,6 +241,7 @@ public struct ConvertRequestOptions: Sendable {
         var inferenceLimit: Int
         var requestRichCandidates: Bool
         var personalizationMode: PersonalizationMode?
+        var useGpu: Bool
         var versionDependentMode: ZenzaiVersionDependentMode
     }
 }

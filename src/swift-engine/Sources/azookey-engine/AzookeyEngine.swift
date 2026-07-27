@@ -13,6 +13,7 @@ nonisolated(unsafe) private var initCount = 0
 nonisolated(unsafe) private var composingText = ComposingText()
 nonisolated(unsafe) private var currentCandidates: [Candidate] = []
 nonisolated(unsafe) private var config = EngineConfig()
+nonisolated(unsafe) private var zenzaiWarmUpStarted = false
 // TextReplacer (絵文字辞書の読み込みを伴う) は高コストなので変換毎に作らずキャッシュする
 nonisolated(unsafe) private var cachedTextReplacer: TextReplacer?
 
@@ -21,6 +22,7 @@ struct EngineConfig {
     var dictionaryPath: String = ""
     var memoryPath: String = ""
     var zenzaiEnabled: Bool = false
+    var zenzaiUseGpu: Bool = false
     var zenzaiInferenceLimit: Int = 10
     var zenzaiWeightPath: String = ""
 }
@@ -32,7 +34,7 @@ private func getOptions(allowLearning: Bool = true) -> ConvertRequestOptions {
 
     if config.zenzaiEnabled, !config.zenzaiWeightPath.isEmpty {
         let weightURL = URL(fileURLWithPath: config.zenzaiWeightPath)
-        zenzaiMode = .on(weight: weightURL, inferenceLimit: config.zenzaiInferenceLimit, personalizationMode: nil)
+        zenzaiMode = .on(weight: weightURL, inferenceLimit: config.zenzaiInferenceLimit, personalizationMode: nil, useGpu: config.zenzaiUseGpu)
     }
 
     let memoryURL = config.memoryPath.isEmpty ? nil : URL(fileURLWithPath: config.memoryPath)
@@ -160,7 +162,43 @@ public func initialize(_ dictionaryPath: UnsafePointer<CChar>?, _ memoryPath: Un
     currentCandidates = []
 
     initCount += 1
-    return converter != nil ? 1 : 0
+    let initialized = converter != nil
+    scheduleZenzaiWarmUpIfNeeded()
+    return initialized ? 1 : 0
+}
+
+/// Schedule GPU warm-up once after all Zenzai settings have reached Swift.
+/// Caller must hold engineLock.
+private func scheduleZenzaiWarmUpIfNeeded() {
+    guard !zenzaiWarmUpStarted,
+          initCount > 0,
+          converter != nil,
+          config.zenzaiEnabled,
+          config.zenzaiUseGpu,
+          !config.zenzaiWeightPath.isEmpty else {
+        return
+    }
+    zenzaiWarmUpStarted = true
+    Thread {
+        warmUpZenzai()
+    }.start()
+}
+
+private func warmUpZenzai() {
+    engineLock.lock()
+    defer { engineLock.unlock() }
+
+    guard initCount > 0,
+          config.zenzaiEnabled,
+          config.zenzaiUseGpu,
+          !config.zenzaiWeightPath.isEmpty,
+          let conv = converter else {
+        return
+    }
+
+    var text = ComposingText()
+    text.insertAtCursorPosition("あ", inputStyle: .direct)
+    _ = conv.requestCandidates(text, options: getOptions(allowLearning: false))
 }
 
 @_silgen_name("Shutdown")
@@ -174,6 +212,7 @@ public func shutdown() {
         composingText = ComposingText()
         currentCandidates = []
         cachedTextReplacer = nil
+        zenzaiWarmUpStarted = false
     }
 }
 
@@ -297,6 +336,15 @@ public func setZenzaiEnabled(_ enabled: Bool) {
     engineLock.lock()
     defer { engineLock.unlock() }
     config.zenzaiEnabled = enabled
+    scheduleZenzaiWarmUpIfNeeded()
+}
+
+@_silgen_name("SetZenzaiUseGpu")
+public func setZenzaiUseGpu(_ enabled: Bool) {
+    engineLock.lock()
+    defer { engineLock.unlock() }
+    config.zenzaiUseGpu = enabled
+    scheduleZenzaiWarmUpIfNeeded()
 }
 
 @_silgen_name("SetZenzaiInferenceLimit")
@@ -312,6 +360,7 @@ public func setZenzaiWeightPath(_ path: UnsafePointer<CChar>?) {
     engineLock.lock()
     defer { engineLock.unlock() }
     config.zenzaiWeightPath = String(cString: path)
+    scheduleZenzaiWarmUpIfNeeded()
 }
 
 @_silgen_name("GetZenzaiStatus")
@@ -320,6 +369,7 @@ public func getZenzaiStatus() -> UnsafePointer<CChar>? {
     defer { engineLock.unlock() }
     var status: [String: Any] = [
         "enabled": config.zenzaiEnabled,
+        "useGpu": config.zenzaiUseGpu,
         "weightPath": config.zenzaiWeightPath,
         "inferenceLimit": config.zenzaiInferenceLimit
     ]
