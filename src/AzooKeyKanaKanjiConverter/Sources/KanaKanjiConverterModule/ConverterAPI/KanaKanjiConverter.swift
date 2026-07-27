@@ -75,13 +75,13 @@ public final class KanaKanjiConverter {
         return (mode, baseModel, personalModel)
     }
 
-    package func getModel(modelURL: URL) -> Zenz? {
-        if let model = self.zenz, model.resourceURL == modelURL {
+    package func getModel(modelURL: URL, useGpu: Bool = false) -> Zenz? {
+        if let model = self.zenz, model.resourceURL == modelURL, model.useGpu == useGpu {
             self.zenzStatus = "load \(modelURL.absoluteString)"
             return model
         } else {
             do {
-                self.zenz = try Zenz(resourceURL: modelURL)
+                self.zenz = try Zenz(resourceURL: modelURL, useGpu: useGpu)
                 self.zenzStatus = "load \(modelURL.absoluteString)"
                 return self.zenz
             } catch {
@@ -92,7 +92,7 @@ public final class KanaKanjiConverter {
     }
 
     public func predictNextCharacter(leftSideContext: String, count: Int, options: ConvertRequestOptions) -> [(character: Character, value: Float)] {
-        guard let zenz = self.getModel(modelURL: options.zenzaiMode.weightURL) else {
+        guard let zenz = self.getModel(modelURL: options.zenzaiMode.weightURL, useGpu: options.zenzaiMode.useGpu) else {
             print("zenz-v2 model unavailable")
             return []
         }
@@ -684,7 +684,7 @@ public final class KanaKanjiConverter {
         }
 
         // FIXME: enable cache based zenzai
-        if zenzaiMode.enabled, let model = self.getModel(modelURL: zenzaiMode.weightURL) {
+        if zenzaiMode.enabled, let model = self.getModel(modelURL: zenzaiMode.weightURL, useGpu: zenzaiMode.useGpu) {
             let (result, nodes, cache) = self.converter.all_zenzai(
                 inputData,
                 zenz: model,
