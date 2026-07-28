@@ -30,6 +30,14 @@ struct EngineConfig {
     var typoCorrectionEnabled: Bool = false
 }
 
+/// 2パス変換の上限(読み1件あたり実測 5〜10ms)。
+/// 変換(スペース)時は全パターンを試し、打鍵毎のサジェストでは
+/// 入力の詰まりを避けるため件数を絞る。mozc 側が種別に応じて設定する
+private let defaultTypoConversionBudget = 7
+nonisolated(unsafe) private var typoConversionBudget = defaultTypoConversionBudget
+/// 採用候補がこの数に達したら以降の読みは変換しない
+private let maxTypoCandidates = 3
+
 private struct TypoCandidate {
     let text: String
     let value: PValue
@@ -318,7 +326,15 @@ private func makeTypoCandidates(for key: String, existingCandidates: [Candidate]
         return []
     }
 
+    // 補正読み1件あたり変換1回のコストがかかる(実測 5〜10ms/件)。
+    // 打鍵毎のサジェストで払う以上、生成された読みを全部変換せず、
+    // 精度の高い順(生成器の並び)に変換して十分な数が採れたら打ち切る
+    var convertedCount = 0
     for correctedReading in TypoCorrectionReadingGenerator.generateCandidates(for: key) {
+        if convertedCount >= typoConversionBudget || typoCandidates.count >= maxTypoCandidates {
+            break
+        }
+        convertedCount += 1
         var text = ComposingText()
         text.insertAtCursorPosition(correctedReading, inputStyle: .direct)
         let result = typoConv.requestCandidates(text, options: typoOptions)
@@ -339,7 +355,7 @@ private func makeTypoCandidates(for key: String, existingCandidates: [Candidate]
                     && !($0.text == correctedReading && $0.value <= -14)
                     // 絶対バー: 誤った補正読みの強引な変換(-25 前後)を除外する。
                     // 実在補正は読み1文字あたり -3.0 より明確に良い(実測 -1.4〜-2.7)
-                    && $0.value > PValue(-3 * correctedReading.count)
+                    && $0.value > PValue(-6 * correctedReading.count)
             }
             .max { $0.value < $1.value }
         if let best {
@@ -352,6 +368,15 @@ private func makeTypoCandidates(for key: String, existingCandidates: [Candidate]
         }
     }
 
+    // 絶対値だけでは「本屋(-11.5、出したい)」と「あたし(-11.1、誤検出)」を
+    // 分離できない。ユーザーが打った通りの変換(1パス目)の最良値と比べ、
+    // それより明確に劣る補正は出さない: 正しく打てている入力では
+    // 1パス目が良い候補を出すので、補正候補は自然に抑制される。
+    // 値は読みが長いほど小さくなるため、必ず1モーラあたりに正規化して比較する
+    // (生の値で比べると、ん/っ 挿入で長くなる補正が一律に負ける)
+    let literalBestPerMora = existingCandidates
+        .map { Double($0.value) / Double(max(1, $0.rubyCount)) }
+        .max()
     var seenTexts = existingTexts
     var filteredCandidates: [TypoCandidate] = []
     let ranked = typoCandidates.sorted { $0.value > $1.value }
@@ -360,6 +385,13 @@ private func makeTypoCandidates(for key: String, existingCandidates: [Candidate]
     for candidate in ranked {
         if let valueCutoff, candidate.value < valueCutoff {
             break
+        }
+        let candidatePerMora = Double(candidate.value) / Double(max(1, candidate.correctedReading.count))
+        // 実測校正: 真の補正は差分 +1.48 〜 -1.66、明らかなゴミは -2.17 以下。
+        // 「わたし→あたし」(w 脱落)のように差分 -1.42 の妥当な補正もあるため、
+        // 取りこぼしを避ける側に倒して -2.0 を採用する(末尾表示なのでノイズ許容)
+        if let literalBestPerMora, candidatePerMora < literalBestPerMora - 2.0 {
+            continue
         }
         guard !seenTexts.contains(candidate.text) else {
             continue
@@ -498,6 +530,13 @@ public func setZenzaiWeightPath(_ path: UnsafePointer<CChar>?) {
     defer { engineLock.unlock() }
     config.zenzaiWeightPath = String(cString: path)
     scheduleZenzaiWarmUpIfNeeded()
+}
+
+@_silgen_name("SetTypoCorrectionBudget")
+public func setTypoCorrectionBudget(_ budget: Int32) {
+    engineLock.lock()
+    defer { engineLock.unlock() }
+    typoConversionBudget = budget > 0 ? Int(budget) : defaultTypoConversionBudget
 }
 
 @_silgen_name("SetTypoCorrectionEnabled")
