@@ -28,6 +28,7 @@ struct EngineConfig {
     var zenzaiInferenceLimit: Int = 10
     var zenzaiWeightPath: String = ""
     var typoCorrectionEnabled: Bool = false
+    var typoCorrectionUseAi: Bool = false
 }
 
 /// 2パス変換の上限(読み1件あたり実測 5〜10ms)。
@@ -35,6 +36,9 @@ struct EngineConfig {
 /// 入力の詰まりを避けるため件数を絞る。mozc 側が種別に応じて設定する
 private let defaultTypoConversionBudget = 7
 nonisolated(unsafe) private var typoConversionBudget = defaultTypoConversionBudget
+/// AI付き2パス変換は推論コストが高いため、体感確認用に少数へ絞る。
+private let typoConversionBudgetWithAi = 7
+private let leftoverAlphabetTypoConversionBudget = 8
 /// 採用候補がこの数に達したら以降の読みは変換しない
 private let maxTypoCandidates = 3
 
@@ -67,6 +71,14 @@ private func containsAsciiLikeNoise(_ text: String) -> Bool {
             || (0x61...0x7A).contains(scalar.value)
             || (0xFF10...0xFF19).contains(scalar.value) || (0xFF21...0xFF3A).contains(scalar.value)
             || (0xFF41...0xFF5A).contains(scalar.value)
+    }
+}
+
+/// ローマ字→かな変換に失敗して読みへ残った ASCII/全角アルファベットの検出
+private func containsAlphabet(_ text: String) -> Bool {
+    text.unicodeScalars.contains { scalar in
+        (0x41...0x5A).contains(scalar.value) || (0x61...0x7A).contains(scalar.value)
+            || (0xFF21...0xFF3A).contains(scalar.value) || (0xFF41...0xFF5A).contains(scalar.value)
     }
 }
 
@@ -109,7 +121,9 @@ private func getOptions(allowLearning: Bool = true) -> ConvertRequestOptions {
 private func getTypoOptions() -> ConvertRequestOptions {
     var options = getOptions(allowLearning: false)
     options.learningType = .nothing
-    options.zenzaiMode = .off
+    if !config.typoCorrectionUseAi || !config.zenzaiEnabled || config.zenzaiWeightPath.isEmpty {
+        options.zenzaiMode = .off
+    }
     return options
 }
 
@@ -319,10 +333,11 @@ private func makeTypoCandidates(for key: String, existingCandidates: [Candidate]
     var typoCandidates: [TypoCandidate] = []
     let typoOptions = getTypoOptions()
     let originalKeyCount = key.count
+    let hasLeftoverAlphabet = containsAlphabet(key)
 
-    // 長い読みでは未知語スコア(-14.5固定)と実変換の分離ができず、
-    // 2パスのコストも読み数に比例するため、短い読みに限定する
-    guard originalKeyCount <= 8 else {
+    // 痕跡なし系は誤り位置が不明な総当たりなので短い読みに限定する。
+    // アルファベット残留系は残留ランが誤り位置を指すため、読み全体の長さでは制限しない
+    guard hasLeftoverAlphabet || originalKeyCount <= 8 else {
         return []
     }
 
@@ -330,8 +345,15 @@ private func makeTypoCandidates(for key: String, existingCandidates: [Candidate]
     // 打鍵毎のサジェストで払う以上、生成された読みを全部変換せず、
     // 精度の高い順(生成器の並び)に変換して十分な数が採れたら打ち切る
     var convertedCount = 0
-    for correctedReading in TypoCorrectionReadingGenerator.generateCandidates(for: key) {
-        if convertedCount >= typoConversionBudget || typoCandidates.count >= maxTypoCandidates {
+    let correctedReadings = hasLeftoverAlphabet
+        ? TypoCorrectionReadingGenerator.leftoverAlphabetCandidates(for: key)
+        : TypoCorrectionReadingGenerator.generateCandidates(for: key)
+    let baseConversionBudget = hasLeftoverAlphabet ? leftoverAlphabetTypoConversionBudget : typoConversionBudget
+    // AI 有効時に予算を絞ると候補読みが足りず品質が落ちる(実測: きょうお→京都 が消えた)。
+    // コストは mozc 側が「変換時のみ AI 有効」にすることで抑える
+    let conversionBudget = baseConversionBudget
+    for correctedReading in correctedReadings {
+        if convertedCount >= conversionBudget || (!hasLeftoverAlphabet && typoCandidates.count >= maxTypoCandidates) {
             break
         }
         convertedCount += 1
@@ -352,7 +374,8 @@ private func makeTypoCandidates(for key: String, existingCandidates: [Candidate]
                     && !isScriptVariantOfReading($0.text, reading: correctedReading)
                     // 未知語素通し(-14.5 固定)の恒等候補を除外。
                     // 実在語のひらがな恒等(こんにちは 等)は value が明確に良いため残る
-                    && !($0.text == correctedReading && $0.value <= -14)
+                    // アルファベット残留系は局所かな化の成立自体が証拠なので恒等候補も許容する
+                    && (hasLeftoverAlphabet || !($0.text == correctedReading && $0.value <= -14))
                     // 絶対バー: 誤った補正読みの強引な変換(-25 前後)を除外する。
                     // 実在補正は読み1文字あたり -3.0 より明確に良い(実測 -1.4〜-2.7)
                     && $0.value > PValue(-6 * correctedReading.count)
@@ -366,6 +389,22 @@ private func makeTypoCandidates(for key: String, existingCandidates: [Candidate]
                 correctedReading: correctedReading
             ))
         }
+    }
+
+    if hasLeftoverAlphabet {
+        var seenTexts = existingTexts
+        var filteredCandidates: [TypoCandidate] = []
+        for candidate in typoCandidates.sorted(by: { $0.value > $1.value }) {
+            guard !seenTexts.contains(candidate.text) else {
+                continue
+            }
+            seenTexts.insert(candidate.text)
+            filteredCandidates.append(candidate)
+            if filteredCandidates.count == maxTypoCandidates {
+                break
+            }
+        }
+        return filteredCandidates
     }
 
     // 絶対値だけでは「本屋(-11.5、出したい)」と「あたし(-11.1、誤検出)」を
@@ -544,6 +583,13 @@ public func setTypoCorrectionEnabled(_ enabled: Bool) {
     engineLock.lock()
     defer { engineLock.unlock() }
     config.typoCorrectionEnabled = enabled
+}
+
+@_silgen_name("SetTypoCorrectionUseAi")
+public func setTypoCorrectionUseAi(_ enabled: Bool) {
+    engineLock.lock()
+    defer { engineLock.unlock() }
+    config.typoCorrectionUseAi = enabled
 }
 
 @_silgen_name("GetZenzaiStatus")

@@ -194,6 +194,75 @@ enum TypoCorrectionReadingGenerator {
         return results
     }
 
+    static func leftoverAlphabetCandidates(for reading: String) -> [String] {
+        let chars = Array(reading)
+        var results: [String] = []
+        var seen = Set<String>([reading])
+
+        func append(_ value: String, perRunCount: inout Int) {
+            guard results.count < 8, perRunCount < 6, value != reading, isHiraganaOnly(value),
+                  !seen.contains(value) else {
+                return
+            }
+            seen.insert(value)
+            results.append(value)
+            perRunCount += 1
+        }
+
+        func replaced(_ range: Range<Int>, with replacement: String) -> String {
+            var replaced = chars
+            replaced.replaceSubrange(range, with: Array(replacement))
+            return String(replaced)
+        }
+
+        var index = 0
+        while index < chars.count && results.count < 8 {
+            guard asciiAlphabet(chars[index]) != nil else {
+                index += 1
+                continue
+            }
+            let start = index
+            var normalizedRun = ""
+            while index < chars.count, let ascii = asciiAlphabet(chars[index]) {
+                normalizedRun.append(ascii)
+                index += 1
+            }
+            let runRange = start..<index
+            var perRunCount = 0
+
+            for vowel in vowels {
+                if let kana = romajiToKana(normalizedRun + String(vowel)) {
+                    append(replaced(runRange, with: kana), perRunCount: &perRunCount)
+                }
+            }
+
+            if index < chars.count, let nextRomaji = hiraganaToRomaji(String(chars[index])) {
+                let combined = normalizedRun + nextRomaji
+                if let kana = romajiToKana(combined) {
+                    append(replaced(start..<(index + 1), with: kana), perRunCount: &perRunCount)
+                }
+            }
+
+            let runChars = Array(normalizedRun)
+            for runIndex in runChars.indices {
+                guard let adjacentKeys = qwertyAdjacentKeys[runChars[runIndex]] else {
+                    continue
+                }
+                for adjacent in adjacentKeys {
+                    var replacedRun = runChars
+                    replacedRun[runIndex] = adjacent
+                    if let kana = romajiToKana(String(replacedRun) + "a") {
+                        append(replaced(runRange, with: kana), perRunCount: &perRunCount)
+                    }
+                }
+            }
+
+            append(replaced(runRange, with: ""), perRunCount: &perRunCount)
+        }
+
+        return results
+    }
+
     private static func alphabetVowelCompletionCandidates(for reading: String) -> [String] {
         let chars = Array(reading)
         var candidates: [String] = []
