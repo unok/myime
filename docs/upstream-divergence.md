@@ -14,6 +14,27 @@ fork / subtree が upstream に対して持つパッチの一覧と、各パッ�
 
 ## 1. mozc fork（patch-myime → **patch-myime-next に rebase 済み、2026-06-12**）
 
+### 2026-07 の機能追加による新規差分（2026-07-29 棚卸し）
+
+CPU-only ビルド化 → Zenzai/GPU 切替 → タイポ補正 → アイドル再サジェストの一連の作業で、fork 独自差分が以下に広がった。いずれも myime 固有機能のため upstream PR 候補ではない。次回 rebase 時の衝突ホットスポットとして記録する。
+
+| 領域 | ファイル | 内容 |
+|---|---|---|
+| converter | `azookey_immutable_converter.cc` | タイポ候補への SPELLING_CORRECTION/NO_HISTORY_LEARNING 付与、FFI 任意取得（SetTypoCorrection*/SetZenzai*）、実行タイミングのゲート（変換・アイドルのみ。予測器内部変換 `used_in_predictor_realtime_conversion` は除外） |
+| converter | `engine_config.h` | レジストリ読み取り関数群（ZenzaiEnabled/ZenzaiUseGpu/TypoCorrectionEnabled/IdleResuggest/TypoCorrectionUseAi）とモデルパス2箇所探索 |
+| gui | `config_dialog/{config_dialog.cc,.h,.ui}` | Conversion engine グループのチェックボックス5つ（レジストリ直読み書き、config.proto 無変更） |
+| protocol | `commands.proto` | `SessionCommand::REQUEST_TYPO_SUGGESTION = 28` |
+| session | `session.cc/.h` | 上記コマンドのハンドラ、`Suggest(input, idle_resuggest)` |
+| session | `session_handler_tool.cc/.h` | ヘッドレステスト用の `REQUEST_TYPO_SUGGESTION` コマンド |
+| engine | `engine_converter.cc` + `engine_converter_interface.h` | `ConversionPreferences.idle_resuggest` の貫通 |
+| request | `options.h` | `ConversionOptions.idle_resuggest` |
+| prediction | `dictionary_predictor.cc` | SPELLING_CORRECTION 候補のトリム後再追加、`RemoveMissSpelledCandidates` の除外ガード |
+| rewriter | `merger_rewriter.h` | サジェスト件数トリムからの SPELLING_CORRECTION 保護 |
+| win32/tip | `tip_text_service.cc` + `tip_keyevent_handler.cc` | アイドルタイマー（400ms）→ REQUEST_TYPO_SUGGESTION → UI-only 候補更新 |
+| win32/installer 他 | バージョン注入（`MOZC_VERSION` 環境変数、upstream 既存フックの利用のみ） | ビルドごとの単調増加バージョン |
+
+myime リポジトリ側（fork 外）: `TypoCorrectionReadingGenerator.swift`（新規）、`AzookeyEngine.swift` のタイポ2パス・GPU切替、`scripts/ci/build-llama-cpp.bat` の `GGML_BACKEND_DL=ON` 化。
+
 **2026-06-12 に upstream/master（`fea1ebace`, 2026-06-11時点）へ rebase 完了。** 新ブランチ `patch-myime-next`（旧 `patch-myime` はバックアップタグ `patch-myime-backup-20260612` とともに温存。master マージ時に改名予定）。
 
 rebase 結果: fork 独自コミットは **14 → 12** にスリム化（27ファイル, +2239/-13。12の内訳 = 機能パッチ9 + .bazelrc復元 + rules_swift pin削除 + ConversionOptions移行）。
