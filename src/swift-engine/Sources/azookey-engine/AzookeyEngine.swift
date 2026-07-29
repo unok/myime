@@ -335,9 +335,10 @@ private func makeTypoCandidates(for key: String, existingCandidates: [Candidate]
     let originalKeyCount = key.count
     let hasLeftoverAlphabet = containsAlphabet(key)
 
-    // 痕跡なし系は誤り位置が不明な総当たりなので短い読みに限定する。
-    // アルファベット残留系は残留ランが誤り位置を指すため、読み全体の長さでは制限しない
-    guard hasLeftoverAlphabet || originalKeyCount <= 8 else {
+    // 痕跡なし系は誤り位置が不明な総当たりなので、低予算では短い読みに限定する。
+    // 長い読みでは正解が生成順の後ろに回りやすく、予算がないと届く前に打ち切られる。
+    // アルファベット残留系は残留ランが誤り位置を指すため、読み全体の長さでは制限しない。
+    guard hasLeftoverAlphabet || typoConversionBudget >= 30 || originalKeyCount <= 8 else {
         return []
     }
 
@@ -381,7 +382,25 @@ private func makeTypoCandidates(for key: String, existingCandidates: [Candidate]
                     && $0.value > PValue(-6 * correctedReading.count)
             }
             .max { $0.value < $1.value }
-        if let best {
+        // ひらがな素通しより漢字変換を優先する。
+        // 残留系では素通しも許容しているため、そのままだと
+        // 「わたしはがくせいでした」のようにひらがなのまま出てしまう
+        // (実測で確認)。ただし「です」のようにひらがなが正解の場合も
+        // あるので、非素通しが無いときだけ素通しを使う
+        let bestConverted = result.mainResults
+            .filter {
+                $0.text != correctedReading
+                    && $0.rubyCount == correctedReading.count
+                    && !existingTexts.contains($0.text)
+                    && !containsAsciiLikeNoise($0.text)
+                    && !isScriptVariantOfReading($0.text, reading: correctedReading)
+                    && $0.value > PValue(-6 * correctedReading.count)
+            }
+            .max { $0.value < $1.value }
+        // 漢字優先は残留系のみ。痕跡なし系では「こんにちは」のように
+        // ひらがなが正解のことがあり、優先すると壊れる(実測で確認)
+        let chosen = hasLeftoverAlphabet ? (bestConverted ?? best) : best
+        if let best = chosen {
             typoCandidates.append(TypoCandidate(
                 text: best.text,
                 value: best.value,
