@@ -795,7 +795,9 @@ enum TypoCorrectionReadingGenerator {
     }
 }
 
-#if TYPO_CORRECTION_TEST
+// テスト専用ヘルパ。internal のみで @_silgen_name エクスポートを持たないため
+// DLL の公開シンボルには影響しない。swift test と scratchpad の swiftc 直叩き
+// (-DTYPO_CORRECTION_TEST) の両方から使うため #if では囲まない
 extension TypoCorrectionReadingGenerator {
     static func testRoundTripReadings() -> [String] {
         let singles = baseKanaToRomaji.keys.map(String.init)
@@ -831,4 +833,3 @@ extension TypoCorrectionReadingGenerator {
         }
     }
 }
-#endif
