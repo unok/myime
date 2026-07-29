@@ -13,7 +13,13 @@ nonisolated(unsafe) private var initCount = 0
 nonisolated(unsafe) private var composingText = ComposingText()
 nonisolated(unsafe) private var currentCandidates: [Candidate] = []
 nonisolated(unsafe) private var currentTypoCandidates: [TypoCandidate] = []
-nonisolated(unsafe) var config = EngineConfig()
+nonisolated(unsafe) private var config = EngineConfig()
+
+/// TypoCorrectionPass など他ファイルからの読み取り用スナップショット。
+/// 書き込みはこのファイルの FFI セッター経由に限定する(engineLock 保持下)
+func currentConfig() -> EngineConfig {
+    config
+}
 nonisolated(unsafe) private var zenzaiWarmUpStarted = false
 // TextReplacer (絵文字辞書の読み込みを伴う) は高コストなので変換毎に作らずキャッシュする
 nonisolated(unsafe) private var cachedTextReplacer: TextReplacer?

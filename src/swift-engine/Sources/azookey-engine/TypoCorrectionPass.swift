@@ -9,8 +9,6 @@ nonisolated(unsafe) var typoConverter: KanaKanjiConverter?
 /// 入力の詰まりを避けるため件数を絞る。mozc 側が種別に応じて設定する
 let defaultTypoConversionBudget = 7
 nonisolated(unsafe) var typoConversionBudget = defaultTypoConversionBudget
-/// AI付き2パス変換は推論コストが高いため、体感確認用に少数へ絞る。
-private let typoConversionBudgetWithAi = 7
 private let leftoverAlphabetTypoConversionBudget = 8
 /// 採用候補がこの数に達したら以降の読みは変換しない
 private let maxTypoCandidates = 3
@@ -57,6 +55,7 @@ private func containsAlphabet(_ text: String) -> Bool {
 
 /// Get conversion options for typo correction pass (caller must hold engineLock)
 private func getTypoOptions() -> ConvertRequestOptions {
+    let config = currentConfig()
     var options = getOptions(allowLearning: false)
     options.learningType = .nothing
     if !config.typoCorrectionUseAi || !config.zenzaiEnabled || config.zenzaiWeightPath.isEmpty {
@@ -67,6 +66,7 @@ private func getTypoOptions() -> ConvertRequestOptions {
 
 /// Build typo-correction candidates via an isolated second converter (caller must hold engineLock).
 func makeTypoCandidates(for key: String, existingCandidates: [Candidate]) -> [TypoCandidate] {
+    let config = currentConfig()
     guard config.typoCorrectionEnabled, let typoConv = typoConverter else {
         return []
     }
