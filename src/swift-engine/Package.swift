@@ -31,5 +31,12 @@ let package = Package(
                 .unsafeFlags(["-L../AzooKeyKanaKanjiConverter/lib/windows"], .when(platforms: [.windows]))
             ]
         ),
+        .testTarget(
+            name: "AzookeyEngineTests",
+            dependencies: ["azookey-engine"],
+            swiftSettings: [
+                .interoperabilityMode(.Cxx)
+            ]
+        ),
     ]
 )
