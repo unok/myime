@@ -29,7 +29,8 @@ Windows向け日本語IME。MozcのUIフレームワークとAzooKeyのかな漢
 - Bazelisk
 - Python 3.x
 - Windows SDK 10.0.22621.0+
-- Vulkan 対応 GPU (Zenzai AI 使用時、オプション)
+
+Zenzai AI は既定で CPU 推論のため GPU は不要です。設定で GPU（Vulkan）推論に切り替える場合のみ Vulkan 対応 GPU が必要です。
 
 ### 2. ビルド
 
@@ -73,13 +74,12 @@ Windows の「設定」→「アプリ」→「Mozc」からアンインスト�
 ```
 myime/
 ├── Mozc_x64.msi              # x64 インストーラ
-├── Mozc_arm64.msi            # ARM64 インストーラ
 └── build/
-    ├── x64/release/          # x64 DLL
-    │   └── azookey-engine.dll
-    └── arm64/release/        # ARM64 DLL
+    └── x64/release/          # x64 DLL
         └── azookey-engine.dll
 ```
+
+ビルドごとにバージョンが自動で上がる（`3.33.<日数>.<時分>`）ため、同じ MSI 名でも常に上書きインストールできます。
 
 ## ディレクトリ構造
 
@@ -104,20 +104,33 @@ myime/
 Zenzai は LLM を使った高精度なかな漢字変換エンジンです。
 
 - モデル: `zenz-v3.1-small` (約500MB)
-- インストール場所: `%ProgramFiles%\Mozc\models\`
+- モデルの場所: `%LOCALAPPDATA%\Mozc\models\`（ユーザー領域）または `%ProgramFiles(x86)%\Mozc\models\`（MSI 配置先）
 - インストール時に HuggingFace から自動ダウンロード
 - ダウンロードに失敗してもインストールは継続（オフライン環境対応）
+- 推論は既定で CPU。設定で Vulkan GPU に切替可能
 
 ### 手動でモデルをダウンロードする場合
 
 ```cmd
 # モデルディレクトリを作成
-mkdir "%ProgramFiles%\Mozc\models"
+mkdir "%LOCALAPPDATA%\Mozc\models"
 
 # モデルをダウンロード
-curl -L -o "%ProgramFiles%\Mozc\models\ggml-model-Q5_K_M.gguf" ^
+curl -L -o "%LOCALAPPDATA%\Mozc\models\ggml-model-Q5_K_M.gguf" ^
   "https://huggingface.co/Miwa-Keita/zenz-v3.1-small-gguf/resolve/main/ggml-model-Q5_K_M.gguf"
 ```
+
+## 設定
+
+Mozc プロパティ（設定ダイアログ）の Conversion engine グループで切り替えます。実体は `HKCU\Software\Mozc` のレジストリ値です（一覧は [docs/architecture.md](docs/architecture.md) 参照）。
+
+| 設定 | 既定 | 内容 |
+|---|---|---|
+| Zenzai | オン | LLM による変換（モデルがある場合のみ） |
+| GPU (Vulkan) | オフ | Zenzai の推論を GPU で行う |
+| タイポ補正 | オン | 打鍵ミスの補正候補を変換時とアイドル時に表示（例: `gakou`→学校） |
+| アイドル再サジェスト | オフ | 入力が止まって約0.4秒後に予測窓へ補正候補を追加 |
+| タイポ補正の AI 評価 | オフ | 補正候補の評価に Zenzai を使う（変換時のみ・低速） |
 
 ## トラブルシューティング
 
@@ -142,8 +155,15 @@ bazelisk clean --expunge
 
 ### Zenzai が動作しない
 
-- モデルファイルが `%ProgramFiles%\Mozc\models\ggml-model-Q5_K_M.gguf` に存在するか確認
-- Vulkan 対応 GPU が必要（CPU フォールバックはなし）
+- モデルファイルが `%LOCALAPPDATA%\Mozc\models\` か `%ProgramFiles(x86)%\Mozc\models\` に存在するか確認
+- 設定ダイアログで Zenzai が有効になっているか確認（既定は有効）
+- GPU 設定を有効にしている場合は Vulkan 対応 GPU とドライバが必要。動かない場合は GPU 設定を外せば CPU で動作します
+
+### インストールが遅い・変更が反映されない
+
+- IME の DLL は起動中の全アプリに読み込まれるため、アプリを多く開いているとインストールに数分かかることがあります（アプリを閉じてから実行すると速い）
+- インストールが「再起動が必要」で終わった場合（イベントログ MsiInstaller 1038）、**再起動するまで古い DLL が動き続けます**。新機能が反映されない時はまずこれを疑い、再起動してください
+- 起動済みのアプリは再起動するまで古い DLL を使い続けます。動作確認は新しく開いたアプリで行ってください
 
 ## 開発
 
@@ -159,7 +179,7 @@ bazelisk build --config=oss_windows //win32/installer:installer_x64
 
 ```cmd
 cd mozc
-git pull origin patch-myime
+git pull origin patch-myime-next
 cd ..
 git add mozc
 git commit -m "Update mozc submodule"

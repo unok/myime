@@ -144,12 +144,31 @@ git subtree push --prefix=src/AzooKeyKanaKanjiConverter https://github.com/unok/
 - `mozc/src/bazel/BUILD.azookey_dlls.bazel` - AzooKey DLL定義
 - `@azookey_dlls` リポジトリは `../../build/x64/release` を参照
 
+### 設定レジストリ（HKCU\Software\Mozc）
+設定ダイアログの Conversion engine グループと対応。一覧と意味は docs/architecture.md 参照。
+`ZenzaiEnabled`(既定1) / `ZenzaiUseGpu`(0) / `TypoCorrectionEnabled`(1) / `IdleResuggest`(0) / `TypoCorrectionUseAi`(0)。
+`zenzai-config.bat` で Zenzai 関連をコマンドラインから変更できる。
+
+### バージョン自動注入
+build-x64.bat が `MOZC_VERSION=3.33.<日数>.<UTC時分>` を注入し、ビルドごとに単調増加する。
+「インストールしたのに古いまま」はバージョン同一が原因ではなくなった（下記のインストール注意を参照）。
+
+### インストールの注意（実測で確認済みの落とし穴）
+- IME の TSF DLL（mozc_tip64.dll）は全 GUI アプリに読み込まれるため、アプリが多いとインストールに5分以上かかる（閉じてからなら15秒程度）
+- インストールが「要再起動」で終わることがある（イベントログ MsiInstaller 1038、種類2=使用中ファイルの置換保留）。**再起動するまでディスク上も古い DLL のまま**で、新機能が動かない。「直っていない」と報告された時はまずこれを疑い、`(Get-Item 'C:\Program Files (x86)\Mozc\mozc_tip64.dll').VersionInfo.FileVersion` で実ファイルのバージョンを確認する
+- 起動済みアプリはプロセス再起動まで古い DLL を使い続ける。動作検証は必ず新規に開いたアプリで行う
+
 ### デバッグ
 ```batch
 # Bazelビルドのみ実行
 cd mozc\src
 bazelisk build --config=oss_windows //win32/installer:installer_x64
 ```
+
+タイポ補正・アイドル再サジェストのヘッドレス検証は `session_handler_main` +
+`session_handler_tool` の `REQUEST_TYPO_SUGGESTION` コマンドで可能（docs/architecture.md 参照）。
+注意: Zenzai 有効環境では session_handler_main が終了時にハングし CPU を消費し続けるため、
+実行後は必ず `Stop-Process` すること。
 
 ### UACインストーラ検出（解決済みの歴史的メモ）
 かつてローカルMSIビルドで、UACの「インストーラ検出」が `build_installer.exe`
