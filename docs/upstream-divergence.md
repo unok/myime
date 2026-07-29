@@ -104,7 +104,7 @@ rebase 結果: fork 独自コミットは **14 → 12** にスリム化（27フ�
 
 ### llama.cpp バージョンの単一ソース化（2026-06-11 実施済み）
 
-**正準定義: `scripts/llama-cpp-version.env`**（`LLAMA_CPP_REPO` + `LLAMA_CPP_VERSION`）。CI ワークフロー・`build-x64.bat`・`run-ci-build.bat`・`scripts/ci/build-llama-cpp.bat` はすべてここを参照する。
+**正準定義: `scripts/llama-cpp-version.env`**（`LLAMA_CPP_REPO` + `LLAMA_CPP_VERSION`）。CI ワークフロー・`build-x64.bat`・`scripts/ci/build-llama-cpp.bat` はすべてここを参照する。(run-ci-build.bat は 2026-07 に廃止)
 
 調査で確定した事実:
 
