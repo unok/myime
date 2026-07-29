@@ -53,6 +53,75 @@ private func containsAlphabet(_ text: String) -> Bool {
     }
 }
 
+private func isScoredReadingElement(_ ruby: String) -> Bool {
+    let foldedRuby = foldedToHiragana(ruby)
+    return !foldedRuby.isEmpty && foldedRuby.unicodeScalars.allSatisfy { scalar in
+        (0x3041...0x3096).contains(scalar.value)
+    }
+}
+
+internal func inferredTypoCorrectionRange(in key: String, data: [DicdataElement]) -> Range<Int>? {
+    let foldedKey = foldedToHiragana(key)
+    var foldedRuby = ""
+    var currentPosition = 0
+    var worstRange: Range<Int>?
+    var worstValuePerMora: Double?
+
+    for element in data {
+        let foldedElementRuby = foldedToHiragana(element.ruby)
+        let start = currentPosition
+        currentPosition += foldedElementRuby.count
+        foldedRuby.append(foldedElementRuby)
+
+        guard foldedKey.hasPrefix(foldedRuby) else {
+            return nil
+        }
+        guard isScoredReadingElement(element.ruby) else {
+            continue
+        }
+
+        let valuePerMora = Double(element.value()) / Double(max(1, foldedElementRuby.count))
+        if worstValuePerMora == nil || valuePerMora < worstValuePerMora! {
+            worstValuePerMora = valuePerMora
+            worstRange = start..<currentPosition
+        }
+    }
+
+    guard foldedRuby == foldedKey else {
+        return nil
+    }
+    // 疑いの絶対閾値: 実在語の1文字あたり value は実測 -1.4〜-2.7 に収まり、
+    // タイポ由来の強引な語(画稿=-4.7 等)は明確に下回る。閾値なしだと
+    // 正しい文でも相対的に最悪な語を疑ってしまい誤検出の元になる
+    // (実測: おはようございますみなさん の ミナサン=-2.07 を疑って ん挿入ゴミが出た)
+    guard let worst = worstValuePerMora, worst <= -3.5 else {
+        return nil
+    }
+    return worstRange
+}
+
+private func localizedTypoCorrectionReadings(for key: String, suspectedRange: Range<Int>) -> [String] {
+    let characters = Array(key)
+    let spanStart = max(0, suspectedRange.lowerBound - 1)
+    let spanEnd = min(characters.count, suspectedRange.upperBound + 1)
+    let span = String(characters[spanStart..<spanEnd])
+    var seen = Set<String>([key])
+    var readings: [String] = []
+
+    for correctedSpan in TypoCorrectionReadingGenerator.generateCandidates(for: span) {
+        var correctedCharacters = characters
+        correctedCharacters.replaceSubrange(spanStart..<spanEnd, with: Array(correctedSpan))
+        let correctedReading = String(correctedCharacters)
+        guard correctedReading != key, !seen.contains(correctedReading) else {
+            continue
+        }
+        seen.insert(correctedReading)
+        readings.append(correctedReading)
+    }
+
+    return readings
+}
+
 /// Get conversion options for typo correction pass (caller must hold engineLock)
 private func getTypoOptions() -> ConvertRequestOptions {
     let config = currentConfig()
@@ -76,11 +145,25 @@ func makeTypoCandidates(for key: String, existingCandidates: [Candidate]) -> [Ty
     let typoOptions = getTypoOptions()
     let originalKeyCount = key.count
     let hasLeftoverAlphabet = containsAlphabet(key)
+    let shouldTryPositionedCorrection = !hasLeftoverAlphabet && originalKeyCount >= 9
+    let localCorrectionReadings: [String]?
+    var literalWholeBestValue: PValue?
+    if shouldTryPositionedCorrection,
+       let bestCoveringCandidate = existingCandidates.first(where: { $0.rubyCount == originalKeyCount }) {
+        literalWholeBestValue = bestCoveringCandidate.value
+        if let suspectedRange = inferredTypoCorrectionRange(in: key, data: bestCoveringCandidate.data) {
+            localCorrectionReadings = localizedTypoCorrectionReadings(for: key, suspectedRange: suspectedRange)
+        } else {
+            localCorrectionReadings = nil
+        }
+    } else {
+        localCorrectionReadings = nil
+    }
 
     // 痕跡なし系は誤り位置が不明な総当たりなので、低予算では短い読みに限定する。
     // 長い読みでは正解が生成順の後ろに回りやすく、予算がないと届く前に打ち切られる。
     // アルファベット残留系は残留ランが誤り位置を指すため、読み全体の長さでは制限しない。
-    guard hasLeftoverAlphabet || typoConversionBudget >= 30 || originalKeyCount <= 8 else {
+    guard shouldTryPositionedCorrection || hasLeftoverAlphabet || typoConversionBudget >= 30 || originalKeyCount <= 8 else {
         return []
     }
 
@@ -88,69 +171,91 @@ func makeTypoCandidates(for key: String, existingCandidates: [Candidate]) -> [Ty
     // 打鍵毎のサジェストで払う以上、生成された読みを全部変換せず、
     // 精度の高い順(生成器の並び)に変換して十分な数が採れたら打ち切る
     var convertedCount = 0
-    let correctedReadings = hasLeftoverAlphabet
+    let correctedReadings = localCorrectionReadings ?? (hasLeftoverAlphabet
         ? TypoCorrectionReadingGenerator.leftoverAlphabetCandidates(for: key)
-        : TypoCorrectionReadingGenerator.generateCandidates(for: key)
+        : TypoCorrectionReadingGenerator.generateCandidates(for: key))
     let baseConversionBudget = hasLeftoverAlphabet ? leftoverAlphabetTypoConversionBudget : typoConversionBudget
     // AI 有効時に予算を絞ると候補読みが足りず品質が落ちる(実測: きょうお→京都 が消えた)。
-    // コストは mozc 側が「変換時のみ AI 有効」にすることで抑える
-    let conversionBudget = baseConversionBudget
-    for correctedReading in correctedReadings {
-        if convertedCount >= conversionBudget || (!hasLeftoverAlphabet && typoCandidates.count >= maxTypoCandidates) {
-            break
-        }
-        convertedCount += 1
-        var text = ComposingText()
-        text.insertAtCursorPosition(correctedReading, inputStyle: .direct)
-        let result = typoConv.requestCandidates(text, options: typoOptions)
+    // コストは mozc 側が「変換時のみ AI 有効」にすることで抑える。
+    // 位置推定経路の読みは高々16件で、途中打ち切りは劣った候補の採用に直結する
+    // (実測: 予算12で本命の っ挿入 に届かず ん挿入 由来の「眼孔」が出た)ため全件変換する
+    let conversionBudget = localCorrectionReadings.map { max(baseConversionBudget, $0.count) } ?? baseConversionBudget
+    func convertTypoReadings(_ readings: [String], requiringImprovementOver minimumValue: PValue? = nil) {
+        for correctedReading in readings {
+            if convertedCount >= conversionBudget
+                || (!hasLeftoverAlphabet && minimumValue == nil && typoCandidates.count >= maxTypoCandidates) {
+                break
+            }
+            convertedCount += 1
+            var text = ComposingText()
+            text.insertAtCursorPosition(correctedReading, inputStyle: .direct)
+            let result = typoConv.requestCandidates(text, options: typoOptions)
 
-        // mainResults の並びは表記バリエーション(value=-190 の素通し系)が先頭に
-        // 来ることがあるため、先頭ではなく value 最大の候補を選ぶ。
-        // ひらがな表記が正解の語(こんにちは 等)があるため、補正読みと同一の
-        // テキストは除外しない。数字・アルファベット混入(に→2 等の過大評価)は除外
-        let best = result.mainResults
-            .filter {
-                // 補正読み全体をカバーする候補のみ(接頭辞断片を除外)
-                $0.rubyCount == correctedReading.count
-                    && !existingTexts.contains($0.text)
-                    && !containsAsciiLikeNoise($0.text)
-                    && !isScriptVariantOfReading($0.text, reading: correctedReading)
-                    // 未知語素通し(-14.5 固定)の恒等候補を除外。
-                    // 実在語のひらがな恒等(こんにちは 等)は value が明確に良いため残る
-                    // アルファベット残留系は局所かな化の成立自体が証拠なので恒等候補も許容する
-                    && (hasLeftoverAlphabet || !($0.text == correctedReading && $0.value <= -14))
-                    // 絶対バー: 誤った補正読みの強引な変換を除外する。
-                    // 実在補正は読み1文字あたり実測 -1.4〜-2.7 に収まるため、
-                    // 余裕を持たせて 1文字あたり -6.0 を下限とする
-                    && $0.value > PValue(-6 * correctedReading.count)
+            // mainResults の並びは表記バリエーション(value=-190 の素通し系)が先頭に
+            // 来ることがあるため、先頭ではなく value 最大の候補を選ぶ。
+            // ひらがな表記が正解の語(こんにちは 等)があるため、補正読みと同一の
+            // テキストは除外しない。数字・アルファベット混入(に→2 等の過大評価)は除外
+            let best = result.mainResults
+                .filter {
+                    // 補正読み全体をカバーする候補のみ(接頭辞断片を除外)
+                    $0.rubyCount == correctedReading.count
+                        && !existingTexts.contains($0.text)
+                        && !containsAsciiLikeNoise($0.text)
+                        && !isScriptVariantOfReading($0.text, reading: correctedReading)
+                        // 未知語素通し(-14.5 固定)の恒等候補を除外。
+                        // 実在語のひらがな恒等(こんにちは 等)は value が明確に良いため残る
+                        // アルファベット残留系は局所かな化の成立自体が証拠なので恒等候補も許容する
+                        && (hasLeftoverAlphabet || !($0.text == correctedReading && $0.value <= -14))
+                        // 絶対バー: 誤った補正読みの強引な変換を除外する。
+                        // 実在補正は読み1文字あたり実測 -1.4〜-2.7 に収まるため、
+                        // 余裕を持たせて 1文字あたり -6.0 を下限とする
+                        && $0.value > PValue(-6 * correctedReading.count)
+                        // 位置推定経路では「1パス目の全文最良より厳密に良い」ことを要求。
+                        // 本物のタイポ修正は壊れた語がスコアを下げている分だけ全文が
+                        // 改善する(実測: 画稿 -29.7 → 学校 で大幅改善)。長文では
+                        // -6/文字の絶対バーが甘くなりすぎ、ゴミが maxTypoCandidates の
+                        // 枠を食い潰して本命に届かなくなる(実測で確認)
+                        && (minimumValue == nil || $0.value > minimumValue!)
+                }
+                .max { $0.value < $1.value }
+            // ひらがな素通しより漢字変換を優先する。
+            // 残留系では素通しも許容しているため、そのままだと
+            // 「わたしはがくせいでした」のようにひらがなのまま出てしまう
+            // (実測で確認)。ただし「です」のようにひらがなが正解の場合も
+            // あるので、非素通しが無いときだけ素通しを使う
+            let bestConverted = result.mainResults
+                .filter {
+                    $0.text != correctedReading
+                        && $0.rubyCount == correctedReading.count
+                        && !existingTexts.contains($0.text)
+                        && !containsAsciiLikeNoise($0.text)
+                        && !isScriptVariantOfReading($0.text, reading: correctedReading)
+                        && $0.value > PValue(-6 * correctedReading.count)
+                        && (minimumValue == nil || $0.value > minimumValue!)
+                }
+                .max { $0.value < $1.value }
+            // 漢字優先は残留系のみ。痕跡なし系では「こんにちは」のように
+            // ひらがなが正解のことがあり、優先すると壊れる(実測で確認)
+            let chosen = hasLeftoverAlphabet ? (bestConverted ?? best) : best
+            if let best = chosen {
+                typoCandidates.append(TypoCandidate(
+                    text: best.text,
+                    value: best.value,
+                    correspondingCount: originalKeyCount,
+                    correctedReading: correctedReading
+                ))
             }
-            .max { $0.value < $1.value }
-        // ひらがな素通しより漢字変換を優先する。
-        // 残留系では素通しも許容しているため、そのままだと
-        // 「わたしはがくせいでした」のようにひらがなのまま出てしまう
-        // (実測で確認)。ただし「です」のようにひらがなが正解の場合も
-        // あるので、非素通しが無いときだけ素通しを使う
-        let bestConverted = result.mainResults
-            .filter {
-                $0.text != correctedReading
-                    && $0.rubyCount == correctedReading.count
-                    && !existingTexts.contains($0.text)
-                    && !containsAsciiLikeNoise($0.text)
-                    && !isScriptVariantOfReading($0.text, reading: correctedReading)
-                    && $0.value > PValue(-6 * correctedReading.count)
-            }
-            .max { $0.value < $1.value }
-        // 漢字優先は残留系のみ。痕跡なし系では「こんにちは」のように
-        // ひらがなが正解のことがあり、優先すると壊れる(実測で確認)
-        let chosen = hasLeftoverAlphabet ? (bestConverted ?? best) : best
-        if let best = chosen {
-            typoCandidates.append(TypoCandidate(
-                text: best.text,
-                value: best.value,
-                correspondingCount: originalKeyCount,
-                correctedReading: correctedReading
-            ))
         }
+    }
+
+    convertTypoReadings(
+        correctedReadings,
+        requiringImprovementOver: localCorrectionReadings != nil ? literalWholeBestValue : nil)
+
+    if let localCorrectionReadings, typoCandidates.isEmpty, convertedCount < conversionBudget {
+        let fallbackReadings = TypoCorrectionReadingGenerator.generateCandidates(for: key)
+            .filter { !localCorrectionReadings.contains($0) }
+        convertTypoReadings(fallbackReadings)
     }
 
     if hasLeftoverAlphabet {
