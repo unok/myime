@@ -147,7 +147,7 @@ git subtree push --prefix=src/AzooKeyKanaKanjiConverter https://github.com/unok/
 ### 設定レジストリ（HKCU\Software\Mozc）
 設定ダイアログの Conversion engine グループと対応。一覧と意味は docs/architecture.md 参照。
 `ZenzaiEnabled`(既定1) / `ZenzaiUseGpu`(0) / `TypoCorrectionEnabled`(1) / `IdleResuggest`(0) / `TypoCorrectionUseAi`(0)。
-`zenzai-config.bat` で Zenzai 関連をコマンドラインから変更できる。
+変更は設定ダイアログから行う（CLI は 2026-07 に廃止。必要なら reg add で直接変更できる）。
 
 ### バージョン自動注入
 build-x64.bat が `MOZC_VERSION=3.33.<日数>.<UTC時分>` を注入し、ビルドごとに単調増加する。
