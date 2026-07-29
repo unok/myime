@@ -377,8 +377,9 @@ private func makeTypoCandidates(for key: String, existingCandidates: [Candidate]
                     // 実在語のひらがな恒等(こんにちは 等)は value が明確に良いため残る
                     // アルファベット残留系は局所かな化の成立自体が証拠なので恒等候補も許容する
                     && (hasLeftoverAlphabet || !($0.text == correctedReading && $0.value <= -14))
-                    // 絶対バー: 誤った補正読みの強引な変換(-25 前後)を除外する。
-                    // 実在補正は読み1文字あたり -3.0 より明確に良い(実測 -1.4〜-2.7)
+                    // 絶対バー: 誤った補正読みの強引な変換を除外する。
+                    // 実在補正は読み1文字あたり実測 -1.4〜-2.7 に収まるため、
+                    // 余裕を持たせて 1文字あたり -6.0 を下限とする
                     && $0.value > PValue(-6 * correctedReading.count)
             }
             .max { $0.value < $1.value }
