@@ -2,11 +2,8 @@
 build/
 *.msi
 
-# llama.cpp DLLs (built from source in CI)
-src/AzooKeyKanaKanjiConverter/lib/windows/*.dll
-src/AzooKeyKanaKanjiConverter/lib/windows/*.lib
-src/AzooKeyKanaKanjiConverter/lib/windows-arm64/*.dll
-src/AzooKeyKanaKanjiConverter/lib/windows-arm64/*.lib
+# llama.cpp build outputs (built from source; includes .myime-llama-build marker)
+src/AzooKeyKanaKanjiConverter/lib/
 llama.cpp-src/
 llama.cpp-build/
 
@@ -59,3 +56,6 @@ tests/*stdout*.txt
 tests/*stderr*.txt
 tests/*result*.txt
 tests/compile.log
+
+# local task-runner state
+.takt/
