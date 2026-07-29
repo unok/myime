@@ -21,7 +21,10 @@ def load_engine():
         print(f"{DLL_PATH} が見つかりません。build-x64.bat を先に実行してください。")
         sys.exit(2)
 
-    os.add_dll_directory(str(BUILD_DIR))
+    # add_dll_directory はハンドルを返し、GC で解放されると検索パスが外れて
+    # 遅延ロード(ggml バックエンド等)が壊れうる。エンジンの生存期間中保持する
+    global _dll_dir_handle
+    _dll_dir_handle = os.add_dll_directory(str(BUILD_DIR))
     os.chdir(BUILD_DIR)
 
     engine = ctypes.CDLL(str(DLL_PATH))
@@ -65,9 +68,8 @@ def main():
     engine = load_engine()
     memory_path = tempfile.mkdtemp(prefix="azookey-typo-test-").encode("utf-8")
 
-    # Keep dictionaryPath empty. The Swift engine uses the bundled default dictionary
-    # only when this argument is empty; passing a non-empty path selects a custom
-    # dictionary and can accidentally create a dictionary-less engine.
+    # dictionaryPath は空文字にする。空なら同梱の既定辞書、非空ならカスタム辞書
+    # (存在しないパスは Initialize が 0 を返す)。テストは既定辞書で行う
     if engine.Initialize(b"", memory_path) != 1:
         print("FAIL: Initialize failed")
         return 1
