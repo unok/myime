@@ -55,9 +55,27 @@ private func containsAlphabet(_ text: String) -> Bool {
 
 private func isScoredReadingElement(_ ruby: String) -> Bool {
     let foldedRuby = foldedToHiragana(ruby)
+    // 長音「ー」(U+30FC)は読みの一部として頻出するため対象に含める
     return !foldedRuby.isEmpty && foldedRuby.unicodeScalars.allSatisfy { scalar in
-        (0x3041...0x3096).contains(scalar.value)
+        (0x3041...0x3096).contains(scalar.value) || scalar.value == 0x30FC
     }
+}
+
+/// 位置推定と改善バーに使う「1パス目の全文最良候補」。
+/// 読みの恒等・表記ゆれは未知語素通し(value=-14 前後の固定値)として実変換より
+/// 高い value を持つため、素の value 最大で選ぶと常にこれが勝ち、単一要素 data で
+/// 位置推定が成立しなくなる(実測: ワタシハガコウニイキマシタ v=-14.0 が
+/// 私は画稿に行きました v=-44.6 を差し置いて選ばれ、長文補正が全滅した)。
+/// 実変換のみに絞ってから value 最大を選ぶ
+internal func bestScoredCoveringCandidate(in candidates: [Candidate], key: String) -> Candidate? {
+    candidates
+        .filter {
+            $0.rubyCount == key.count
+                && $0.text != key
+                && !isScriptVariantOfReading($0.text, reading: key)
+                && !containsAsciiLikeNoise($0.text)
+        }
+        .max { $0.value < $1.value }
 }
 
 internal func inferredTypoCorrectionRange(in key: String, data: [DicdataElement]) -> Range<Int>? {
@@ -149,7 +167,7 @@ func makeTypoCandidates(for key: String, existingCandidates: [Candidate]) -> [Ty
     let localCorrectionReadings: [String]?
     var literalWholeBestValue: PValue?
     if shouldTryPositionedCorrection,
-       let bestCoveringCandidate = existingCandidates.first(where: { $0.rubyCount == originalKeyCount }) {
+       let bestCoveringCandidate = bestScoredCoveringCandidate(in: existingCandidates, key: key) {
         literalWholeBestValue = bestCoveringCandidate.value
         if let suspectedRange = inferredTypoCorrectionRange(in: key, data: bestCoveringCandidate.data) {
             localCorrectionReadings = localizedTypoCorrectionReadings(for: key, suspectedRange: suspectedRange)
@@ -163,7 +181,9 @@ func makeTypoCandidates(for key: String, existingCandidates: [Candidate]) -> [Ty
     // 痕跡なし系は誤り位置が不明な総当たりなので、低予算では短い読みに限定する。
     // 長い読みでは正解が生成順の後ろに回りやすく、予算がないと届く前に打ち切られる。
     // アルファベット残留系は残留ランが誤り位置を指すため、読み全体の長さでは制限しない。
-    guard shouldTryPositionedCorrection || hasLeftoverAlphabet || typoConversionBudget >= 30 || originalKeyCount <= 8 else {
+    // 位置推定が成立した場合のみ長文を許す。推定失敗(疑い語なし・分割不一致)で
+    // 総当たりに落ちると、低予算の長文でゴミと空振りコストだけが残る
+    guard localCorrectionReadings != nil || hasLeftoverAlphabet || typoConversionBudget >= 30 || originalKeyCount <= 8 else {
         return []
     }
 
