@@ -83,6 +83,18 @@ jobs:
           restore-keys: |
             bazel-repo-windows-x64-
 
+      # Bazel のアクションキャッシュ(コンパイル結果)。exact key は毎回異なるため
+      # 各実行が更新済みキャッシュを保存し、次回は restore-keys で直近を復元する。
+      # MOZC_VERSION の注入で無効化されるのは刻印参照ターゲットのみで、
+      # C++ コンパイル本体のキャッシュは生き残る
+      - name: Cache Bazel disk cache
+        uses: actions/cache@v4
+        with:
+          path: .bazel-disk-cache
+          key: bazel-disk-windows-x64-${{ github.sha }}
+          restore-keys: |
+            bazel-disk-windows-x64-
+
       - name: Cache Swift Package Manager
         uses: actions/cache@v4
         with:
@@ -183,7 +195,7 @@ jobs:
       - name: Build Mozc x64 MSI
         shell: cmd
         working-directory: mozc/src
-        run: bazelisk build --repository_cache=%GITHUB_WORKSPACE%\.bazel-repo-cache --config=oss_windows --spawn_strategy=local --action_env=MOZC_VERSION=%MOZC_AUTO_VERSION% //win32/installer:installer_x64
+        run: bazelisk build --repository_cache=%GITHUB_WORKSPACE%\.bazel-repo-cache --disk_cache=%GITHUB_WORKSPACE%\.bazel-disk-cache --config=oss_windows --spawn_strategy=local --action_env=MOZC_VERSION=%MOZC_AUTO_VERSION% //win32/installer:installer_x64
 
       - name: Copy MSI
         run: copy mozc\src\bazel-bin\win32\installer\Mozc_x64.msi .
