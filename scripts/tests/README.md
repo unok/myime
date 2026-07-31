@@ -15,5 +15,9 @@ Engine conversion regression tests require `build\x64\release\azookey-engine.dll
 Build the DLL first, then run from the repository root:
 
 ```powershell
+# 補正が出るべきケース + 誤検出しないべきケース
 python scripts/tests/typo_conversion_test.py
+
+# 正しく打てている日常文30件に補正候補が混入しないこと(予算12/60)
+python scripts/tests/typo_clean_sweep_test.py
 ```

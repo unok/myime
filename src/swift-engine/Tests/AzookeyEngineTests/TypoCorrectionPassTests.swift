@@ -25,6 +25,29 @@ final class TypoCorrectionPassTests: XCTestCase {
         XCTAssertNil(inferredTypoCorrectionRange(in: "わたしはがこう", data: data))
     }
 
+    func testInferredTypoCorrectionRangeReturnsNilAboveThreshold() {
+        let data = [
+            makeData(word: "窓", ruby: "マド", value: -7.52),
+            makeData(word: "を", ruby: "ヲ", value: -1),
+            makeData(word: "開けてもいいですか", ruby: "アケテモイイデスカ", value: -12)
+        ]
+
+        // -3.76/文字 は閾値 -4.0 より上なので発火しない(境界確認)
+        XCTAssertNil(inferredTypoCorrectionRange(in: "まどをあけてもいいですか", data: data))
+    }
+
+    func testInferredTypoCorrectionRangeReturnsWorstSegmentAtTypoBoundary() {
+        let data = [
+            makeData(word: "私", ruby: "わたし", value: -3),
+            makeData(word: "は", ruby: "は", value: -1),
+            makeData(word: "画稿", ruby: "ガコウ", value: -14.13),
+            makeData(word: "に", ruby: "に", value: -1),
+            makeData(word: "行きました", ruby: "いきました", value: -6)
+        ]
+
+        XCTAssertEqual(inferredTypoCorrectionRange(in: "わたしはがこうにいきました", data: data), 4..<7)
+    }
+
     // 未知語素通し(表記ゆれ恒等、value=-14 固定)は実変換(-44 台)より value が
     // 高いため、素の value 最大で選ぶと常に勝ってしまい位置推定が成立しない。
     // 実変換のみから選ぶことの回帰テスト

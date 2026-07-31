@@ -12,6 +12,10 @@ nonisolated(unsafe) var typoConversionBudget = defaultTypoConversionBudget
 private let leftoverAlphabetTypoConversionBudget = 8
 /// 採用候補がこの数に達したら以降の読みは変換しない
 private let maxTypoCandidates = 3
+/// 位置推定・長文総当たり経路で要求する「1パス目最良からの最低改善幅」
+/// (モーラ正規化後)。実測: 真の補正は +15 前後改善するが、ゴミは
+/// 置換型(まと→的)で +2.5、削除型はモーラ換算後 +1.5 程度に留まる
+private let typoImprovementMargin: PValue = 4.0
 
 struct TypoCandidate {
     let text: String
@@ -112,7 +116,11 @@ internal func inferredTypoCorrectionRange(in key: String, data: [DicdataElement]
     // タイポ由来の強引な語(画稿=-4.7 等)は明確に下回る。閾値なしだと
     // 正しい文でも相対的に最悪な語を疑ってしまい誤検出の元になる
     // (実測: おはようございますみなさん の ミナサン=-2.07 を疑って ん挿入ゴミが出た)
-    guard let worst = worstValuePerMora, worst <= -3.5 else {
+    // 健全な文でも 窓(マド)=-4.47/文字 のように -4.0 を下回る要素はあり、
+    // 真のタイポ(画稿=-4.71/文字)と閾値では分離できない。閾値は発火頻度
+    // (無駄な変換コスト)を抑える粗いゲートに留め、誤検出の最終防衛は
+    // 改善バー(モーラ正規化+マージン)が担う
+    guard let worst = worstValuePerMora, worst <= -4.0 else {
         return nil
     }
     return worstRange
@@ -164,11 +172,16 @@ func makeTypoCandidates(for key: String, existingCandidates: [Candidate]) -> [Ty
     let originalKeyCount = key.count
     let hasLeftoverAlphabet = containsAlphabet(key)
     let shouldTryPositionedCorrection = !hasLeftoverAlphabet && originalKeyCount >= 9
+    let bestCoveringCandidateForWhole: Candidate?
+    if !hasLeftoverAlphabet && originalKeyCount >= 9 {
+        bestCoveringCandidateForWhole = bestScoredCoveringCandidate(in: existingCandidates, key: key)
+    } else {
+        bestCoveringCandidateForWhole = nil
+    }
     let localCorrectionReadings: [String]?
-    var literalWholeBestValue: PValue?
+    let literalWholeBestValue = bestCoveringCandidateForWhole?.value
     if shouldTryPositionedCorrection,
-       let bestCoveringCandidate = bestScoredCoveringCandidate(in: existingCandidates, key: key) {
-        literalWholeBestValue = bestCoveringCandidate.value
+       let bestCoveringCandidate = bestCoveringCandidateForWhole {
         if let suspectedRange = inferredTypoCorrectionRange(in: key, data: bestCoveringCandidate.data) {
             localCorrectionReadings = localizedTypoCorrectionReadings(for: key, suspectedRange: suspectedRange)
         } else {
@@ -207,6 +220,13 @@ func makeTypoCandidates(for key: String, existingCandidates: [Candidate]) -> [Ty
                 break
             }
             convertedCount += 1
+            // 読み長の異なる補正(ん/っ挿入で+1、余分文字削除で-1)を生値で比べると
+            // 短い読みほど構造的に有利になる(実測: お削除の「中が好きました」が
+            // +4.8 の見かけ改善)。literal 最良の1モーラあたり値×補正読み長で
+            // 「同じ読み長ならこの程度」に換算してから改善を要求する
+            let improvementBar = minimumValue.map {
+                $0 / PValue(originalKeyCount) * PValue(correctedReading.count) + typoImprovementMargin
+            }
             var text = ComposingText()
             text.insertAtCursorPosition(correctedReading, inputStyle: .direct)
             let result = typoConv.requestCandidates(text, options: typoOptions)
@@ -235,7 +255,7 @@ func makeTypoCandidates(for key: String, existingCandidates: [Candidate]) -> [Ty
                         // 改善する(実測: 画稿 -29.7 → 学校 で大幅改善)。長文では
                         // -6/文字の絶対バーが甘くなりすぎ、ゴミが maxTypoCandidates の
                         // 枠を食い潰して本命に届かなくなる(実測で確認)
-                        && (minimumValue == nil || $0.value > minimumValue!)
+                        && (improvementBar == nil || $0.value > improvementBar!)
                 }
                 .max { $0.value < $1.value }
             // ひらがな素通しより漢字変換を優先する。
@@ -251,7 +271,7 @@ func makeTypoCandidates(for key: String, existingCandidates: [Candidate]) -> [Ty
                         && !containsAsciiLikeNoise($0.text)
                         && !isScriptVariantOfReading($0.text, reading: correctedReading)
                         && $0.value > PValue(-6 * correctedReading.count)
-                        && (minimumValue == nil || $0.value > minimumValue!)
+                        && (improvementBar == nil || $0.value > improvementBar!)
                 }
                 .max { $0.value < $1.value }
             // 漢字優先は残留系のみ。痕跡なし系では「こんにちは」のように
@@ -268,14 +288,19 @@ func makeTypoCandidates(for key: String, existingCandidates: [Candidate]) -> [Ty
         }
     }
 
+    // 長文(9文字以上)では位置推定・総当たりを問わず1パス目最良からの明確な改善を要求する。
+    // 予算60の総当たりで ん挿入の実在語化(診療/勤王)や先頭ん挿入がバーなしで素通しした(実測)。
+    // 短い読み(8文字以下)は従来の1モーラ正規化マージン方式を維持(本屋 -11.5 等は生値比較だと負ける)
     convertTypoReadings(
         correctedReadings,
-        requiringImprovementOver: localCorrectionReadings != nil ? literalWholeBestValue : nil)
+        requiringImprovementOver: originalKeyCount >= 9 ? literalWholeBestValue : nil)
 
     if let localCorrectionReadings, typoCandidates.isEmpty, convertedCount < conversionBudget {
         let fallbackReadings = TypoCorrectionReadingGenerator.generateCandidates(for: key)
             .filter { !localCorrectionReadings.contains($0) }
-        convertTypoReadings(fallbackReadings)
+        convertTypoReadings(
+            fallbackReadings,
+            requiringImprovementOver: originalKeyCount >= 9 ? literalWholeBestValue : nil)
     }
 
     if hasLeftoverAlphabet {
