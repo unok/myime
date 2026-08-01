@@ -24,6 +24,77 @@ nonisolated(unsafe) private var zenzaiWarmUpStarted = false
 // TextReplacer (絵文字辞書の読み込みを伴う) は高コストなので変換毎に作らずキャッシュする
 nonisolated(unsafe) private var cachedTextReplacer: TextReplacer?
 
+private struct DynamicUserDictionaryEntry: Decodable {
+    let reading: String
+    let word: String
+    let pos: String
+}
+
+private struct DynamicUserDictionaryPos {
+    let cid: Int
+    let mid: Int
+    let value: PValue
+}
+
+private enum DynamicUserDictionaryCID {
+    // AzooKey's bundled dictionary uses the IPADIC connection-ID layout.
+    static let adjective = 19       // 形容詞,自立,...,基本形
+    static let interjection = 3     // 感動詞
+    static let adverb = 1281        // 副詞,一般
+    static let sahenNoun = 1283     // 名詞,サ変接続
+}
+
+/// Maps the stable categories sent by Mozc to AzooKey dictionary attributes.
+/// Categories for which AzooKey does not expose a dedicated CID use the
+/// general-noun CID so that the entry remains usable across dictionary updates.
+private func dynamicUserDictionaryPos(for category: String) -> DynamicUserDictionaryPos {
+    let general = DynamicUserDictionaryPos(
+        cid: CIDData.一般名詞.cid, mid: MIDData.一般.mid, value: -5)
+    switch category {
+    case "proper_noun":
+        return .init(cid: CIDData.固有名詞.cid, mid: MIDData.一般.mid, value: -5)
+    case "personal_name":
+        return .init(cid: CIDData.人名一般.cid, mid: MIDData.一般.mid, value: -5)
+    case "family_name":
+        return .init(cid: CIDData.人名姓.cid, mid: MIDData.人名姓.mid, value: -5)
+    case "first_name":
+        return .init(cid: CIDData.人名名.cid, mid: MIDData.人名名.mid, value: -5)
+    case "place_name":
+        return .init(cid: CIDData.地名一般.cid, mid: MIDData.一般.mid, value: -5)
+    case "organization":
+        return .init(cid: CIDData.固有名詞組織.cid, mid: MIDData.組織.mid, value: -5)
+    case "sahen_noun":
+        return .init(cid: DynamicUserDictionaryCID.sahenNoun, mid: MIDData.一般.mid, value: -5)
+    case "adjective":
+        return .init(cid: DynamicUserDictionaryCID.adjective, mid: MIDData.一般.mid, value: -5)
+    case "adverb":
+        return .init(cid: DynamicUserDictionaryCID.adverb, mid: MIDData.一般.mid, value: -5)
+    case "interjection":
+        return .init(cid: DynamicUserDictionaryCID.interjection, mid: MIDData.一般.mid, value: -5)
+    case "symbol":
+        return .init(cid: CIDData.記号.cid, mid: MIDData.一般.mid, value: -8)
+    case "noun":
+        return general
+    default:
+        return general
+    }
+}
+
+func decodeDynamicUserDictionary(_ json: String) throws -> [DicdataElement] {
+    let entries = try JSONDecoder().decode(
+        [DynamicUserDictionaryEntry].self, from: Data(json.utf8))
+    return entries.compactMap { entry in
+        guard !entry.reading.isEmpty, !entry.word.isEmpty else { return nil }
+        let pos = dynamicUserDictionaryPos(for: entry.pos)
+        return DicdataElement(
+            word: entry.word,
+            ruby: entry.reading.toKatakana(),
+            cid: pos.cid,
+            mid: pos.mid,
+            value: pos.value)
+    }
+}
+
 /// Engine configuration
 struct EngineConfig {
     var dictionaryPath: String = ""
@@ -412,6 +483,23 @@ public func setTypoCorrectionUseAi(_ enabled: Bool) {
     engineLock.lock()
     defer { engineLock.unlock() }
     config.typoCorrectionUseAi = enabled
+}
+
+/// Replaces the in-memory dynamic user dictionary with the complete Mozc
+/// user dictionary encoded as UTF-8 JSON. Returns 1 on success.
+@_cdecl("SetUserDictionary")
+public func setUserDictionary(_ json: UnsafePointer<CChar>?) -> Int32 {
+    guard let json else { return 0 }
+    guard let dicdata = try? decodeDynamicUserDictionary(String(cString: json)) else {
+        return 0
+    }
+
+    engineLock.lock()
+    defer { engineLock.unlock() }
+    guard let converter else { return 0 }
+    converter.importDynamicUserDictionary(dicdata)
+    typoConverter?.importDynamicUserDictionary(dicdata)
+    return 1
 }
 
 @_silgen_name("GetZenzaiStatus")
