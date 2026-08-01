@@ -150,7 +150,7 @@ jobs:
         run: |
           $env:PATH = "$env:GITHUB_WORKSPACE\src\AzooKeyKanaKanjiConverter\lib\windows;$env:PATH"
           Set-Location src/swift-engine
-          swift test
+          swift test -c release
 
       - name: Copy Swift Runtime DLLs
         shell: pwsh
@@ -161,10 +161,12 @@ jobs:
         working-directory: mozc/src
         run: python build_tools/update_deps.py --noqt --nollvm --nomsys2 --nondk
 
-      - name: Build Bazel targets
+      # :all はテストバイナリの全リンクを引き込み25分かかったため、
+      # 実行するテスト（次ステップで依存をビルド）と Windows 固有の tip に絞る。
+      - name: Build Bazel targets (win32/tip)
         shell: cmd
         working-directory: mozc/src
-        run: bazelisk build --repository_cache=%GITHUB_WORKSPACE%\.bazel-repo-cache --disk_cache=%GITHUB_WORKSPACE%\.bazel-disk-cache --config=oss_windows --spawn_strategy=local //converter:all //engine:all //rewriter:all //session:all //win32/tip:tip_text_service_impl
+        run: bazelisk build --repository_cache=%GITHUB_WORKSPACE%\.bazel-repo-cache --disk_cache=%GITHUB_WORKSPACE%\.bazel-disk-cache --config=oss_windows --spawn_strategy=local //win32/tip:tip_text_service_impl
 
       # //session:session_test と //session:session_handler_scenario_test は azookey-engine.dll をロードできない環境では素で失敗するため対象外（テスト自体の無効化ではなく実行環境の制約）
       - name: Test Bazel targets
