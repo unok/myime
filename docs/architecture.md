@@ -93,6 +93,8 @@ Mozc（C++ / TSF）をUIフレームワークとし、かな漢字変換を Azoo
 | `mozc/src/protocol/commands.proto` + `session/session.cc` | `REQUEST_TYPO_SUGGESTION` コマンド（アイドル再サジェスト） |
 | `mozc/src/prediction/dictionary_predictor.cc` + `rewriter/merger_rewriter.h` | 予測経路でタイポ候補（SPELLING_CORRECTION）がトリムで消えないための保護 |
 | `mozc/src/win32/tip/tip_text_service.cc` + `tip_keyevent_handler.cc` | アイドルタイマー（400ms）と UI-only 候補更新 |
+| `mozc/src/converter/azookey_user_dictionary.cc/.h` | Mozc ユーザー辞書 → AzooKey 動的ユーザー辞書の一方向反映（新規ファイル、ADR-0003） |
+| `mozc/src/rewriter/word_register_rewriter.cc/.h` + `engine/engine_converter.cc` + `session/session.cc` | 予測・変換窓末尾の【辞書登録】候補と、確定せずダイアログ起動する選択処理 |
 
 ## ビルド・パッケージング配線
 
@@ -139,6 +141,16 @@ CI（`.github/workflows/build-x64.yml`）は llama.cpp をソースからビル�
 4. 応答の preedit が現在の composition と一致する場合のみ `last_output` を差し替えて UI 更新（composition には触らない。打鍵が割り込んでいたら破棄）
 
 予測経路でのタイポ候補は `dictionary_predictor.cc`（`RemoveMissSpelledCandidates` の除外ガード + トリム後の再追加）と `merger_rewriter.h`（サジェスト件数トリムからの `SPELLING_CORRECTION` 保護）を通って表示に到達する。ヘッドレス検証は `session_handler_tool` の `REQUEST_TYPO_SUGGESTION` コマンドで可能。
+
+## ユーザー辞書と単語登録
+
+Mozc ユーザー辞書（user_dictionary.db）を正本とし、AzooKey へは一方向反映する（[ADR-0003](./adr/0003-mozc-user-dictionary-as-source-of-truth.md)）。用語は CONTEXT.md「ユーザー辞書と単語登録」節を参照。
+
+**反映経路（Phase 1）**: エンジン初期化時と Reload 時（単語登録ダイアログの保存が `client_->Reload()` を呼ぶ）に、`converter/azookey_user_dictionary.cc` が db を直接ロードして JSON 化し、DLL の `SetUserDictionary` へ全量置換でプッシュ → Swift 側で `importDynamicUserDictionary`（メモリ上・非永続）。品詞は C++ 側で十数種のカテゴリ文字列に落とし、Swift 側で CID/MID/コストへ変換。未知品詞は普通名詞。抑制単語と NO_POS は対象外。`SetUserDictionary` を持たない旧 DLL では null チェックでスキップ。
+
+**辞書登録候補（Phase 2）**: `rewriter/word_register_rewriter.cc` が予測窓・変換窓の各セグメント末尾に【辞書登録】（`COMMAND_CANDIDATE` + 新 Command `LAUNCH_WORD_REGISTER_DIALOG`）を注入。モバイル（mixed_conversion）・predictor 内部変換（`used_in_predictor_realtime_conversion`）・空キー・候補ゼロには注入しない。選択時は全経路（SELECT/SUBMIT/数字キー/サジェスト commit）で `MaybeLaunchWordRegisterCandidate()` が確定を抑止して composition を取り消し、`Output.launch_tool_mode=WORD_REGISTER_DIALOG` と読み（`launch_tool_arg`、予測窓=入力全体、変換窓=フォーカス文節）を返す。TSF（`tip_edit_session_impl.cc` → `HandleToolOutput`）が読みを環境変数に設定して `mozc_tool --mode=word_register_dialog` を起動（ダイアログ側は無改修で macOS と同じ環境変数を読む）。Ctrl+F7（入力前状態）でも起動可。
+
+**ヘッドレス検証の注意**: `session_handler_main.exe` は DLL プリロード対策により azookey-engine.dll を「自分と同じディレクトリ」からのみロードするため、exe を `build/x64/release/` にコピーして実行する。`--profile` は Windows では未存在ディレクトリしか指定できない（既存だと CreateDirectoryW が失敗）。サジェスト末尾の固定表示は `merger_rewriter.h` のトリム保護（タイポ補正と同じ関門、辞書登録はさらに後）を通る。
 
 ## レジストリ設定一覧（HKCU\Software\Mozc）
 
