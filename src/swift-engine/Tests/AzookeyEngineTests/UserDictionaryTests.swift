@@ -24,6 +24,25 @@ final class UserDictionaryTests: XCTestCase {
         XCTAssertEqual(entries[0].mid, MIDData.一般.mid)
     }
 
+    func testMissingPosDefaultsToNoun() throws {
+        let json = #"[{"reading":"ほん","word":"本"}]"#
+        let entries = try decodeDynamicUserDictionary(json)
+
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries[0].word, "本")
+        XCTAssertEqual(entries[0].lcid, CIDData.一般名詞.cid)
+        XCTAssertEqual(entries[0].mid, MIDData.一般.mid)
+    }
+
+    func testMissingReadingDropsOnlyInvalidEntry() throws {
+        let json = #"[{"word":"欠落","pos":"noun"},{"reading":"せいじょう","word":"正常","pos":"noun"}]"#
+        let entries = try decodeDynamicUserDictionary(json)
+
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries[0].ruby, "セイジョウ")
+        XCTAssertEqual(entries[0].word, "正常")
+    }
+
     func testMapsStandaloneWordCategoriesToIPADICCids() throws {
         let json = #"""
         [

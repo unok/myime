@@ -25,9 +25,22 @@ nonisolated(unsafe) private var zenzaiWarmUpStarted = false
 nonisolated(unsafe) private var cachedTextReplacer: TextReplacer?
 
 private struct DynamicUserDictionaryEntry: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case reading
+        case word
+        case pos
+    }
+
     let reading: String
     let word: String
     let pos: String
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        reading = try container.decodeIfPresent(String.self, forKey: .reading) ?? ""
+        word = try container.decodeIfPresent(String.self, forKey: .word) ?? ""
+        pos = try container.decodeIfPresent(String.self, forKey: .pos) ?? "noun"
+    }
 }
 
 private struct DynamicUserDictionaryPos {
