@@ -1,152 +1,79 @@
 # MyIME
 
-Windows向け日本語IME。MozcのUIフレームワークとAzooKeyのかな漢字変換エンジン（Zenzai AI対応）を組み合わせたハイブリッドIME。
-
-## アーキテクチャ
+Windows向け日本語IME。MozcのUIフレームワーク（fork）とAzooKeyのかな漢字変換エンジンをC FFIで接続し、LLM変換（Zenzai）・タイポ補正・辞書登録候補を加えたハイブリッド構成。
 
 ```
 ┌─────────────────────────────────────────────────┐
 │                   Mozc (UI)                      │
 │  - TSF/IME フレームワーク                        │
-│  - 候補ウィンドウ                                │
-│  - 設定ツール                                    │
+│  - 候補ウィンドウ・設定ツール                    │
 └─────────────────┬───────────────────────────────┘
                   │ C FFI
 ┌─────────────────▼───────────────────────────────┐
 │           azookey-engine.dll (Swift)            │
-│  - KanaKanjiConverterModule                     │
+│  - AzooKeyKanaKanjiConverter                    │
 │  - Zenzai AI (llama.cpp)                        │
 └─────────────────────────────────────────────────┘
 ```
 
-## クイックスタート
+ビルド手順は [docs/build.md](docs/build.md)、内部構造は [docs/architecture.md](docs/architecture.md) を参照。
 
-### 1. 必要条件
+## インストール
 
-- Windows 10/11 (x64)　※ ARM64 対応は現在棚上げ中
-- Visual Studio 2022 (C++ ワークロード)
-- Swift 6.2.1 以上 (Windows版)
-- Bazelisk
-- Python 3.x
-- Windows SDK 10.0.22621.0+
+`Mozc_x64.msi` を管理者権限で実行する。MSI は [docs/build.md](docs/build.md) の手順でビルドするか、GitHub Actions「Build x64」の成果物を使う。
 
-Zenzai AI は既定で CPU 推論のため GPU は不要です。設定で GPU（Vulkan）推論に切り替える場合のみ Vulkan 対応 GPU が必要です。
+インストール時に Zenzai のモデル（約500MB）が自動ダウンロードされる。失敗してもインストールは続行し、モデルは後から追加できる（下記「Zenzai」参照）。アンインストールは Windows の「設定」→「アプリ」→「Mozc」から。
 
-### 2. ビルド
+## 標準の IME にない機能
 
-```cmd
-# リポジトリをクローン（サブモジュール含む）
-git clone --recursive https://github.com/unok/myime.git
-cd myime
+### Zenzai（LLM かな漢字変換）
 
-# x64 ビルド
-build-x64.bat
+llama.cpp 上のニューラル言語モデル zenz-v3.1-small（約500MB）で変換候補を生成・評価する。モデルファイルがあり設定がオン（既定）なら自動で有効になり、なければ通常の辞書変換だけで動く。推論は既定で CPU。設定で Vulkan GPU に切り替えられる（対応 GPU とドライバが必要）。
 
-# ARM64 ビルド（現在棚上げ中・動作しません）
-# build-arm64.bat
-```
+モデルの入手方法は3つ:
 
-### 3. インストール
+- MSI インストール時の自動ダウンロード
+- `mozc_tool --mode=zenzai_download`（モデル未検出時に IME が案内を出す）
+- 手動配置:
 
-```cmd
-# 管理者権限で MSI を実行
-Mozc_x64.msi
-```
+  ```cmd
+  mkdir "%LOCALAPPDATA%\Mozc\models"
+  curl -L -o "%LOCALAPPDATA%\Mozc\models\ggml-model-Q5_K_M.gguf" ^
+    "https://huggingface.co/Miwa-Keita/zenz-v3.1-small-gguf/resolve/main/ggml-model-Q5_K_M.gguf"
+  ```
 
-インストール時に Zenzai AI モデルが自動でダウンロードされます（約500MB）。
+### タイポ補正
 
-### 4. アンインストール
+ローマ字の打鍵ミスを補正した候補をスペース変換時に追加する。「gakou」→「学校」のような1文字欠け、「ありがとうございまs」のようにアルファベットが残った入力、長文の途中に紛れたタイポを扱う。補正候補は通常変換とは独立した2パス目で生成されるため、正しく打てた入力の変換結果は変わらない。
 
-Windows の「設定」→「アプリ」→「Mozc」からアンインストール
+### アイドル再サジェスト（既定オフ）
 
-## ビルドスクリプト
+入力が止まって約0.4秒後に、予測窓へタイポ補正込みの候補を追加する。打鍵中は何もしないため入力遅延はない。
 
-| スクリプト | 説明 |
-|-----------|------|
-| `build-x64.bat` | x64 用 Swift DLL + Mozc MSI をビルド |
-| `build-arm64.bat` | ARM64 用ビルド（**現在棚上げ中・動作しません**） |
-| `build-mozc.bat` | Mozc のみビルド（Swift DLL はスキップ） |
-| `clean.bat` | ビルド成果物をクリーンアップ |
-| `restart-ime.bat` | IME プロセスを再起動 |
+### 辞書登録候補と単語登録
 
-## ビルド成果物
+予測窓・変換窓の末尾に【辞書登録】候補が常に表示される。選んでも文字列は確定されず、入力中の文字列を取り消したうえで単語登録ダイアログが開く。読みは事前入力される（予測窓では入力中のひらがな全体、変換窓ではフォーカス中の文節の読み）。未入力の状態からは Ctrl+F7 でも開ける（MS-IME キーマップ）。
 
-```
-myime/
-├── Mozc_x64.msi              # x64 インストーラ
-└── build/
-    └── x64/release/          # x64 DLL
-        └── azookey-engine.dll
-```
-
-ビルドごとにバージョンが自動で上がる（`3.33.<日数>.<時分>`）ため、同じ MSI 名でも常に上書きインストールできます。
-
-## ディレクトリ構造
-
-```
-myime/
-├── mozc/                    # Mozc submodule (unok/mozc fork)
-│   └── src/
-│       ├── win32/          # Windows TSF 実装
-│       └── MODULE.bazel    # Bazel 設定
-├── src/
-│   ├── swift-engine/       # Swift 変換エンジン
-│   │   ├── Package.swift
-│   │   └── Sources/
-│   └── AzooKeyKanaKanjiConverter/  # かな漢字変換 (subtree)
-├── build-x64.bat           # x64 ビルド
-├── build-arm64.bat         # ARM64 ビルド
-└── build/                  # ビルド成果物
-```
-
-## Zenzai AI について
-
-Zenzai は LLM を使った高精度なかな漢字変換エンジンです。
-
-- モデル: `zenz-v3.1-small` (約500MB)
-- モデルの場所: `%LOCALAPPDATA%\Mozc\models\`（ユーザー領域）または `%ProgramFiles(x86)%\Mozc\models\`（MSI 配置先）
-- インストール時に HuggingFace から自動ダウンロード
-- ダウンロードに失敗してもインストールは継続（オフライン環境対応）
-- 推論は既定で CPU。設定で Vulkan GPU に切替可能
-
-### 手動でモデルをダウンロードする場合
-
-```cmd
-# モデルディレクトリを作成
-mkdir "%LOCALAPPDATA%\Mozc\models"
-
-# モデルをダウンロード
-curl -L -o "%LOCALAPPDATA%\Mozc\models\ggml-model-Q5_K_M.gguf" ^
-  "https://huggingface.co/Miwa-Keita/zenz-v3.1-small-gguf/resolve/main/ggml-model-Q5_K_M.gguf"
-```
+登録した単語は保存した時点で AzooKey 変換（予測・Zenzai 含む）にも反映される。正本は Mozc のユーザー辞書で、AzooKey へは一方向に全量プッシュする（[ADR-0003](docs/adr/0003-mozc-user-dictionary-as-source-of-truth.md)）。
 
 ## 設定
 
-Mozc プロパティ（設定ダイアログ）の Conversion engine グループで切り替えます。実体は `HKCU\Software\Mozc` のレジストリ値です（一覧は [docs/architecture.md](docs/architecture.md) 参照）。
+通知領域の Mozc アイコンのメニューから「プロパティ」を開き、Conversion engine グループで切り替える。実体は `HKCU\Software\Mozc` のレジストリ値（DWORD 0/1）で、`reg add` での直接変更もできる。
 
-| 設定 | 既定 | 内容 |
-|---|---|---|
-| Zenzai | オン | LLM による変換（モデルがある場合のみ） |
-| GPU (Vulkan) | オフ | Zenzai の推論を GPU で行う |
-| タイポ補正 | オン | 打鍵ミスの補正候補を変換時とアイドル時に表示（例: `gakou`→学校） |
-| アイドル再サジェスト | オフ | 入力が止まって約0.4秒後に予測窓へ補正候補を追加 |
-| タイポ補正の AI 評価 | オフ | 補正候補の評価に Zenzai を使う（変換時のみ・低速） |
-
-## トラブルシューティング
-
-### Swift ビルドが失敗する
-
-- Visual Studio 2022 の C++ ワークロードがインストールされているか確認
-- Swift 6.2.1 以上がインストールされているか確認 (`swift --version`)
-- Swift Runtime が正しい場所にあるか確認 (`%LOCALAPPDATA%\Programs\Swift\Runtimes\`)
-
-### Bazel ビルドが失敗する
+| 設定 | レジストリ値 | 既定 | 内容 |
+|---|---|---|---|
+| Zenzai | `ZenzaiEnabled` | オン | LLM による変換（モデルがある場合のみ） |
+| GPU (Vulkan) | `ZenzaiUseGpu` | オフ | Zenzai の推論を GPU で行う |
+| タイポ補正 | `TypoCorrectionEnabled` | オン | 打鍵ミスの補正候補を表示 |
+| アイドル再サジェスト | `IdleResuggest` | オフ | 入力停止時に予測窓へ補正候補を追加 |
+| タイポ補正の AI 評価 | `TypoCorrectionUseAi` | オフ | 補正候補の評価に Zenzai を使う（変換時のみ・低速） |
 
 ```cmd
-# Bazel キャッシュをクリア
-cd mozc\src
-bazelisk clean --expunge
+:: 例: アイドル再サジェストを有効化
+reg add HKCU\Software\Mozc /v IdleResuggest /t REG_DWORD /d 1 /f
 ```
+
+## トラブルシューティング
 
 ### IME が表示されない
 
@@ -155,35 +82,25 @@ bazelisk clean --expunge
 
 ### Zenzai が動作しない
 
-- モデルファイルが `%LOCALAPPDATA%\Mozc\models\` か `%ProgramFiles(x86)%\Mozc\models\` に存在するか確認
-- 設定ダイアログで Zenzai が有効になっているか確認（既定は有効）
-- GPU 設定を有効にしている場合は Vulkan 対応 GPU とドライバが必要。動かない場合は GPU 設定を外せば CPU で動作します
+- モデルファイルが `%LOCALAPPDATA%\Mozc\models\` か `%ProgramFiles(x86)%\Mozc\models\` にあるか確認
+- 設定ダイアログで Zenzai が有効か確認（既定は有効）
+- GPU 設定を有効にしている場合は Vulkan 対応 GPU とドライバが必要。動かない場合は GPU 設定を外せば CPU で動く
 
 ### インストールが遅い・変更が反映されない
 
-- IME の DLL は起動中の全アプリに読み込まれるため、アプリを多く開いているとインストールに数分かかることがあります（アプリを閉じてから実行すると速い）
-- インストールが「再起動が必要」で終わった場合（イベントログ MsiInstaller 1038）、**再起動するまで古い DLL が動き続けます**。新機能が反映されない時はまずこれを疑い、再起動してください
-- 起動済みのアプリは再起動するまで古い DLL を使い続けます。動作確認は新しく開いたアプリで行ってください
+- IME の DLL は起動中の全アプリに読み込まれるため、アプリを多く開いているとインストールに数分かかる（閉じてから実行すると速い）
+- インストールが「再起動が必要」で終わった場合、再起動するまで古い DLL が動き続ける。新機能が反映されない時はまず再起動する
+- 起動済みのアプリは再起動するまで古い DLL を使い続ける。動作確認は新しく開いたアプリで行う
 
-## 開発
+ビルド関連のトラブルは [docs/build.md](docs/build.md) を参照。
 
-### デバッグビルド
+## ドキュメント
 
-```cmd
-# mozc/src で直接 Bazel を実行
-cd mozc\src
-bazelisk build --config=oss_windows //win32/installer:installer_x64
-```
-
-### Mozc submodule の更新
-
-```cmd
-cd mozc
-git pull origin patch-myime-next
-cd ..
-git add mozc
-git commit -m "Update mozc submodule"
-```
+- [docs/build.md](docs/build.md) — ビルド環境・手順・開発時の再インストール
+- [docs/architecture.md](docs/architecture.md) — Mozc ⇔ AzooKey 統合の内部構造
+- [docs/adr/](docs/adr/) — 設計判断の記録
+- [docs/upstream-divergence.md](docs/upstream-divergence.md) — fork / subtree が upstream に対して持つパッチの棚卸し
+- [CONTEXT.md](CONTEXT.md) — プロジェクト用語集
 
 ## ライセンス
 
