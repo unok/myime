@@ -3,8 +3,6 @@ name: Build x64
 on:
   push:
     branches: [master]
-  pull_request:
-    branches: [master]
   workflow_dispatch:
 
 env:
@@ -32,7 +30,7 @@ jobs:
           python-version: "3.11"
 
       - name: Setup Swift
-        uses: SwiftyLab/setup-swift@latest
+        uses: SwiftyLab/setup-swift@38f54a76b70d989321de9dc7c840618c08cf56e9 # v1.14.0
         with:
           swift-version: ${{ env.SWIFT_VERSION }}
 

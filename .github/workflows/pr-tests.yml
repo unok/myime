@@ -1,0 +1,175 @@
+name: PR Tests
+
+on:
+  pull_request:
+    branches: [master]
+
+env:
+  SWIFT_VERSION: "6.2.1"
+
+jobs:
+  test:
+    runs-on: windows-2022
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # LLAMA_CPP_REPO / LLAMA_CPP_VERSION の正準定義（Zenzai用パッチ入りfork）
+      - name: Load llama.cpp version
+        shell: bash
+        run: cat scripts/llama-cpp-version.env >> "$GITHUB_ENV"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Swift
+        uses: SwiftyLab/setup-swift@38f54a76b70d989321de9dc7c840618c08cf56e9 # v1.14.0
+        with:
+          swift-version: ${{ env.SWIFT_VERSION }}
+
+      - name: Verify Swift installation
+        run: swift --version
+
+      - name: Install Bazelisk
+        run: |
+          choco install bazelisk -y
+          bazelisk version
+
+      # NOTE: 以前は ~/.cache/bazel をキャッシュしていたが、Windows の Bazel は
+      # %USERPROFILE%\_bazel_* / %LocalAppData%\bazelisk を使うため実効性がなかった
+      # (毎回外部依存をフル fetch していた)。--repository_cache を明示パスに固定し、
+      # それと bazelisk のダウンロードキャッシュを保存する。
+      - name: Cache Bazel repository
+        uses: actions/cache@v4
+        with:
+          path: |
+            .bazel-repo-cache
+            ~/AppData/Local/bazelisk
+          key: bazel-repo-windows-x64-${{ hashFiles('mozc/src/MODULE.bazel', 'mozc/src/.bazeliskrc') }}
+          restore-keys: |
+            bazel-repo-windows-x64-
+
+      # Bazel のアクションキャッシュ(コンパイル結果)。exact key は毎回異なるため
+      # 各実行が更新済みキャッシュを保存し、次回は restore-keys で直近を復元する。
+      # MOZC_VERSION の注入で無効化されるのは刻印参照ターゲットのみで、
+      # C++ コンパイル本体のキャッシュは生き残る
+      - name: Cache Bazel disk cache
+        uses: actions/cache@v4
+        with:
+          path: .bazel-disk-cache
+          key: bazel-disk-windows-x64-${{ github.sha }}
+          restore-keys: |
+            bazel-disk-windows-x64-
+
+      - name: Cache Swift Package Manager
+        uses: actions/cache@v4
+        with:
+          path: src/swift-engine/.build
+          key: swift-pm-windows-x64-${{ hashFiles('src/swift-engine/Package.swift', 'src/swift-engine/Package.resolved') }}
+          restore-keys: |
+            swift-pm-windows-x64-
+
+      - name: Cache llama.cpp build
+        id: cache-llama
+        uses: actions/cache@v4
+        with:
+          path: llama.cpp-build
+          key: llama-cpp-windows-x64-dl-vulkan-${{ env.LLAMA_CPP_VERSION }}
+
+      - name: Install Vulkan SDK
+        if: steps.cache-llama.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $vulkanVersion = "1.3.296.0"
+          $installerUrl = "https://sdk.lunarg.com/sdk/download/$vulkanVersion/windows/VulkanSDK-$vulkanVersion-Installer.exe"
+          $installerPath = "$env:TEMP\VulkanSDK-Installer.exe"
+
+          Write-Host "Downloading Vulkan SDK $vulkanVersion..."
+          Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
+
+          Write-Host "Installing Vulkan SDK..."
+          Start-Process -FilePath $installerPath -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait
+
+          # Set environment variable
+          $vulkanPath = "C:\VulkanSDK\$vulkanVersion"
+          echo "VULKAN_SDK=$vulkanPath" >> $env:GITHUB_ENV
+          echo "$vulkanPath\Bin" >> $env:GITHUB_PATH
+
+      - name: Create build directories
+        run: mkdir -p build/x64/release
+        shell: bash
+
+      # Build llama.cpp
+      - name: Build llama.cpp
+        if: steps.cache-llama.outputs.cache-hit != 'true'
+        shell: cmd
+        run: scripts\ci\build-llama-cpp.bat x64 %LLAMA_CPP_VERSION% llama.cpp-build
+
+      - name: Copy llama.cpp DLLs
+        shell: pwsh
+        run: scripts/ci/copy-llama-dlls.ps1 -Arch x64 -SourceDir llama.cpp-build
+
+      # Build Swift DLL
+      - name: Build Swift DLL
+        shell: pwsh
+        run: |
+          Set-Location src/swift-engine
+          swift build -c release --arch x86_64
+          # Find the actual DLL path (symlink may fail on CI)
+          $dllPath = Get-ChildItem -Path .build -Recurse -Filter "azookey-engine.dll" | Where-Object { $_.FullName -match "release" } | Select-Object -First 1
+          if ($dllPath) {
+            Copy-Item -Force $dllPath.FullName -Destination "../../build/x64/release/"
+            Write-Host "Copied from: $($dllPath.FullName)"
+          } else {
+            throw "azookey-engine.dll not found"
+          }
+          # Copy Swift resource bundles (dictionary data)
+          $buildDir = $dllPath.DirectoryName
+          $outputDir = "../../build/x64/release"
+          foreach ($bundle in @(
+            "AzooKeyKanaKanjiConverter_KanaKanjiConverterModuleWithDefaultDictionary.resources",
+            "AzooKeyKanaKanjiConverter_EfficientNGram.resources"
+          )) {
+            $src = Join-Path $buildDir $bundle
+            if (Test-Path $src) {
+              Copy-Item -Recurse -Force $src -Destination (Join-Path $outputDir $bundle)
+              Write-Host "Copied resource bundle: $bundle"
+            } else {
+              Write-Host "WARNING: Resource bundle not found: $src"
+            }
+          }
+
+      - name: Test Swift package
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:GITHUB_WORKSPACE\src\AzooKeyKanaKanjiConverter\lib\windows;$env:PATH"
+          Set-Location src/swift-engine
+          swift test -c release
+
+      - name: Copy Swift Runtime DLLs
+        shell: pwsh
+        run: scripts/ci/copy-swift-runtime.ps1 -OutputDir build/x64/release
+
+      - name: Update Mozc dependencies
+        shell: cmd
+        working-directory: mozc/src
+        run: python build_tools/update_deps.py --noqt --nollvm --nomsys2 --nondk
+
+      # :all はテストバイナリの全リンクを引き込み25分かかったため、
+      # 実行するテスト（次ステップで依存をビルド）と Windows 固有の tip に絞る。
+      - name: Build Bazel targets (win32/tip)
+        shell: cmd
+        working-directory: mozc/src
+        run: bazelisk build --repository_cache=%GITHUB_WORKSPACE%\.bazel-repo-cache --disk_cache=%GITHUB_WORKSPACE%\.bazel-disk-cache --config=oss_windows --spawn_strategy=local //win32/tip:tip_text_service_impl
+
+      # //session:session_test と //session:session_handler_scenario_test は azookey-engine.dll をロードできない環境では素で失敗するため対象外（テスト自体の無効化ではなく実行環境の制約）
+      - name: Test Bazel targets
+        shell: cmd
+        working-directory: mozc/src
+        run: bazelisk test --repository_cache=%GITHUB_WORKSPACE%\.bazel-repo-cache --disk_cache=%GITHUB_WORKSPACE%\.bazel-disk-cache --config=oss_windows --spawn_strategy=local //converter:azookey_user_dictionary_test //rewriter:word_register_rewriter_test //rewriter:merger_rewriter_test //rewriter:rewriter_test //engine:engine_converter_test //session:session_handler_test //config:config_handler_test
