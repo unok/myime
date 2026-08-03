@@ -152,6 +152,15 @@ Mozc ユーザー辞書（user_dictionary.db）を正本とし、AzooKey へは�
 
 **ヘッドレス検証の注意**: `session_handler_main.exe` は DLL プリロード対策により azookey-engine.dll を「自分と同じディレクトリ」からのみロードするため、exe を `build/x64/release/` にコピーして実行する。`--profile` は Windows では未存在ディレクトリしか指定できない（既存だと CreateDirectoryW が失敗）。サジェスト末尾の固定表示は `merger_rewriter.h` のトリム保護（タイポ補正と同じ関門、辞書登録はさらに後）を通る。
 
+## パススルー英数切替キー
+
+レジストリ `PassthroughHalfAlnumKeys`（REG_SZ、例 `Ctrl+T Ctrl+Q`）に設定したキーは、TSF の OnTestKeyDown（`win32/tip/tip_keyevent_handler.cc`）で eaten=FALSE を返してアプリへそのまま通し、同時に `TipEditSession::SwitchInputModeAsync` で半角英数モードへ切り替える。プレフィックスキー（tmux 等）の後続入力が IME に食われないようにする機能。
+
+- 発動条件: keydown・IME オン・無効コンテキスト（パスワード欄等）でない・未確定文字列なし・修飾キー込みの完全一致
+- 書式はスペース区切りで、Ctrl/Alt/Shift を `+` で連結しキー本体は英数字1文字。修飾キーなしのトークンは無効（素の文字を設定するとその文字の日本語入力が不可能になるため）
+- パースとマッチは `win32/tip/tip_passthrough_key.cc`（単体テスト `//win32/tip:tip_passthrough_key_test`）。設定値はキーイベントごとに生文字列を読み、変化したときだけ再パースする（IME 再起動不要）
+- 設定 UI は設定ダイアログ Conversion engine グループの「Passthrough alnum switch keys」欄（REG_SZ を読み書き）
+
 ## レジストリ設定一覧（HKCU\Software\Mozc）
 
 設定ダイアログ（Conversion engine グループ）と対応する。config.proto は変更せず、レジストリ直読み方式。
@@ -163,6 +172,7 @@ Mozc ユーザー辞書（user_dictionary.db）を正本とし、AzooKey へは�
 | `TypoCorrectionEnabled` | DWORD | 1 | タイポ補正候補を出す |
 | `IdleResuggest` | DWORD | 0 | アイドル時にタイポ補正込みで候補窓を更新する |
 | `TypoCorrectionUseAi` | DWORD | 0 | タイポ候補の評価に Zenzai を使う（変換時のみ・低速） |
+| `PassthroughHalfAlnumKeys` | REG_SZ | （空） | アプリへ渡しつつ半角英数へ切り替えるキーのリスト |
 
 エンジンが書き込む状態通知（GUI が読む）: `ZenzaiActive` / `ZenzaiGpuActive` / `ZenzaiWeightPath` / `ZenzaiTimestamp`。
 
