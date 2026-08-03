@@ -3,6 +3,10 @@ name: PR Tests
 on:
   pull_request:
     branches: [master]
+    # ドキュメントだけの PR ではビルド・テストを走らせない
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
 
 env:
   SWIFT_VERSION: "6.2.1"
@@ -41,12 +45,13 @@ jobs:
           choco install bazelisk -y
           bazelisk version
 
-      # NOTE: 以前は ~/.cache/bazel をキャッシュしていたが、Windows の Bazel は
-      # %USERPROFILE%\_bazel_* / %LocalAppData%\bazelisk を使うため実効性がなかった
-      # (毎回外部依存をフル fetch していた)。--repository_cache を明示パスに固定し、
-      # それと bazelisk のダウンロードキャッシュを保存する。
-      - name: Cache Bazel repository
-        uses: actions/cache@v4
+      # NOTE: PR ではキャッシュを「復元のみ」にする（actions/cache/restore）。
+      # PR ごとに 1GB 超の bazel-disk キャッシュを保存すると、リポジトリ上限 10GB の
+      # LRU で master の Qt / llama / Swift キャッシュが追い出され、master のフル
+      # ビルドが 40分 → 1時間20分超に悪化した（2026-08-03 実測）。保存は master の
+      # Build x64 だけが行い、PR は master の最新キャッシュを読むだけにする。
+      - name: Restore Bazel repository cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             .bazel-repo-cache
@@ -55,29 +60,28 @@ jobs:
           restore-keys: |
             bazel-repo-windows-x64-
 
-      # Bazel のアクションキャッシュ(コンパイル結果)。exact key は毎回異なるため
-      # 各実行が更新済みキャッシュを保存し、次回は restore-keys で直近を復元する。
-      # MOZC_VERSION の注入で無効化されるのは刻印参照ターゲットのみで、
-      # C++ コンパイル本体のキャッシュは生き残る
-      - name: Cache Bazel disk cache
-        uses: actions/cache@v4
+      # Bazel のアクションキャッシュ(コンパイル結果)。master が保存した直近を
+      # restore-keys で復元する。MOZC_VERSION の注入で無効化されるのは刻印参照
+      # ターゲットのみで、C++ コンパイル本体のキャッシュは生き残る
+      - name: Restore Bazel disk cache
+        uses: actions/cache/restore@v4
         with:
           path: .bazel-disk-cache
           key: bazel-disk-windows-x64-${{ github.sha }}
           restore-keys: |
             bazel-disk-windows-x64-
 
-      - name: Cache Swift Package Manager
-        uses: actions/cache@v4
+      - name: Restore Swift Package Manager cache
+        uses: actions/cache/restore@v4
         with:
           path: src/swift-engine/.build
           key: swift-pm-windows-x64-${{ hashFiles('src/swift-engine/Package.swift', 'src/swift-engine/Package.resolved') }}
           restore-keys: |
             swift-pm-windows-x64-
 
-      - name: Cache llama.cpp build
+      - name: Restore llama.cpp build cache
         id: cache-llama
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: llama.cpp-build
           key: llama-cpp-windows-x64-dl-vulkan-${{ env.LLAMA_CPP_VERSION }}
