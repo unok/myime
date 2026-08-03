@@ -82,6 +82,7 @@ reg add HKCU\Software\Mozc /v IdleResuggest /t REG_DWORD /d 1 /f
 reg add HKCU\Software\Mozc /v PassthroughHalfAlnumKeys /t REG_SZ /d "Ctrl+T Ctrl+Q" /f
 ```
 
+- 設定した全キーが同じ動作。押すたびに半角英数へ切り替える（トグルではない）で、切り替わったモードは持続する。「ひらがなへ戻すキー」はこの機能にはなく、戻すのは通常のモード切替キーで行う
 - 書式はスペース区切り。Ctrl / Alt / Shift を `+` でつなぎ、キー本体は英数字1文字。修飾キーなしの指定は無視される
 - IME オンかつ未確定文字列がないときだけ発動する。設定変更は次のキー入力から反映される（IME 再起動不要）
 

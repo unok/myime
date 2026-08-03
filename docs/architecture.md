@@ -156,6 +156,7 @@ Mozc ユーザー辞書（user_dictionary.db）を正本とし、AzooKey へは�
 
 レジストリ `PassthroughHalfAlnumKeys`（REG_SZ、例 `Ctrl+T Ctrl+Q`）に設定したキーは、TSF の OnTestKeyDown（`win32/tip/tip_keyevent_handler.cc`）で eaten=FALSE を返してアプリへそのまま通し、同時に `TipEditSession::SwitchInputModeAsync` で半角英数モードへ切り替える。プレフィックスキー（tmux 等）の後続入力が IME に食われないようにする機能。
 
+- 設定した全キーが同じ動作で、常に HALF_ASCII への片方向切替（トグルや「ひらがなへ戻すキー」は存在しない。既に HALF_ASCII のときは切替コマンドを送らずパススルーのみ）
 - 発動条件: keydown・IME オン・無効コンテキスト（パスワード欄等）でない・未確定文字列なし・修飾キー込みの完全一致
 - 書式はスペース区切りで、Ctrl/Alt/Shift を `+` で連結しキー本体は英数字1文字。修飾キーなしのトークンは無効（素の文字を設定するとその文字の日本語入力が不可能になるため）
 - パースとマッチは `win32/tip/tip_passthrough_key.cc`（単体テスト `//win32/tip:tip_passthrough_key_test`）。設定値はキーイベントごとに生文字列を読み、変化したときだけ再パースする（IME 再起動不要）
