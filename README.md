@@ -58,7 +58,7 @@ llama.cpp 上のニューラル言語モデル zenz-v3.1-small（約500MB）で�
 
 ## 設定
 
-通知領域の Mozc アイコンのメニューから「プロパティ」を開き、Conversion engine グループで切り替える。実体は `HKCU\Software\Mozc` のレジストリ値（DWORD 0/1）で、`reg add` での直接変更もできる。
+通知領域の Mozc アイコンのメニューから「プロパティ」を開き、Conversion engine グループで切り替える。実体は `HKCU\Software\Mozc` のレジストリ値で、`reg add` での直接変更もできる。
 
 | 設定 | レジストリ値 | 既定 | 内容 |
 |---|---|---|---|
@@ -67,11 +67,24 @@ llama.cpp 上のニューラル言語モデル zenz-v3.1-small（約500MB）で�
 | タイポ補正 | `TypoCorrectionEnabled` | オン | 打鍵ミスの補正候補を表示 |
 | アイドル再サジェスト | `IdleResuggest` | オフ | 入力停止時に予測窓へ補正候補を追加 |
 | タイポ補正の AI 評価 | `TypoCorrectionUseAi` | オフ | 補正候補の評価に Zenzai を使う（変換時のみ・低速） |
+| パススルー英数切替キー | `PassthroughHalfAlnumKeys` | （空） | キーをアプリへ渡しつつ半角英数モードへ切替（下記） |
 
 ```cmd
 :: 例: アイドル再サジェストを有効化
 reg add HKCU\Software\Mozc /v IdleResuggest /t REG_DWORD /d 1 /f
 ```
+
+### パススルー英数切替キー
+
+設定したキー（例: Ctrl+T）を押すと、キーはアプリにそのまま届き、同時に IME が半角英数モードに切り替わる。tmux などのプレフィックスキーの後続入力が IME に食われなくなる。設定ダイアログの「Passthrough alnum switch keys」欄で設定する（`reg add` での直接設定も可、REG_SZ）。
+
+```cmd
+reg add HKCU\Software\Mozc /v PassthroughHalfAlnumKeys /t REG_SZ /d "Ctrl+T Ctrl+Q" /f
+```
+
+- 設定した全キーが同じ動作。押すたびに半角英数へ切り替える（トグルではない）で、切り替わったモードは持続する。「ひらがなへ戻すキー」はこの機能にはなく、戻すのは通常のモード切替キーで行う
+- 書式はスペース区切り。Ctrl / Alt / Shift を `+` でつなぎ、キー本体は英数字1文字。修飾キーなしの指定は無視される
+- IME オンかつ未確定文字列がないときだけ発動する。設定変更は次のキー入力から反映される（IME 再起動不要）
 
 ## トラブルシューティング
 
