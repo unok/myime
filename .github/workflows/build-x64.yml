@@ -3,6 +3,10 @@ name: Build x64
 on:
   push:
     branches: [master]
+    # ドキュメントだけの変更で約40分のフル MSI ビルドを走らせない
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   workflow_dispatch:
 
 env:

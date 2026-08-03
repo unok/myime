@@ -89,6 +89,8 @@ git commit -m "Update mozc submodule"
 | PR Tests | pull_request | Swift DLL ビルド + swift test + Bazel の主要ターゲットの build/test（MSI なし、約16分） |
 | Build x64 | master への push / 手動実行 | フル MSI ビルド（成果物 `Mozc_x64` をダウンロード可能） |
 
+`**.md`・`docs/**` だけの変更ではどちらも走らない。キャッシュの保存は master（Build x64）だけが行い、PR は復元のみ。PR 側でも保存すると 1GB 超の bazel-disk キャッシュが PR ごとに積み上がり、上限 10GB の LRU で Qt / llama のキャッシュが追い出されて master のビルドが 40分 → 1時間20分超に悪化する（2026-08-03 実測）。
+
 ブランチを指定して MSI を作る場合:
 
 ```cmd
