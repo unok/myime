@@ -58,7 +58,7 @@ llama.cpp 上のニューラル言語モデル zenz-v3.1-small（約500MB）で�
 
 ## 設定
 
-通知領域の Mozc アイコンのメニューから「プロパティ」を開き、Conversion engine グループで切り替える。実体は `HKCU\Software\Mozc` のレジストリ値（DWORD 0/1）で、`reg add` での直接変更もできる。
+通知領域の Mozc アイコンのメニューから「プロパティ」を開き、Conversion engine グループで切り替える。実体は `HKCU\Software\Mozc` のレジストリ値で、`reg add` での直接変更もできる。
 
 | 設定 | レジストリ値 | 既定 | 内容 |
 |---|---|---|---|
@@ -76,14 +76,14 @@ reg add HKCU\Software\Mozc /v IdleResuggest /t REG_DWORD /d 1 /f
 
 ### パススルー英数切替キー
 
-設定したキー（例: Ctrl+T）を押すと、キーはアプリにそのまま届き、同時に IME が半角英数モードに切り替わる。tmux などのプレフィックスキーの後続入力が IME に食われなくなる。設定ダイアログに項目はなく、レジストリでのみ設定する（REG_SZ）。
+設定したキー（例: Ctrl+T）を押すと、キーはアプリにそのまま届き、同時に IME が半角英数モードに切り替わる。tmux などのプレフィックスキーの後続入力が IME に食われなくなる。設定ダイアログの「Passthrough alnum switch keys」欄で設定する（`reg add` での直接設定も可、REG_SZ）。
 
 ```cmd
 reg add HKCU\Software\Mozc /v PassthroughHalfAlnumKeys /t REG_SZ /d "Ctrl+T Ctrl+Q" /f
 ```
 
 - 書式はスペース区切り。Ctrl / Alt / Shift を `+` でつなぎ、キー本体は英数字1文字。修飾キーなしの指定は無視される
-- IME オンかつ未確定文字列がないときだけ発動する。反映には IME の再起動（サインアウト→サインイン等）が必要
+- IME オンかつ未確定文字列がないときだけ発動する。設定変更は次のキー入力から反映される（IME 再起動不要）
 
 ## トラブルシューティング
 

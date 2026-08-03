@@ -158,7 +158,8 @@ Mozc ユーザー辞書（user_dictionary.db）を正本とし、AzooKey へは�
 
 - 発動条件: keydown・IME オン・無効コンテキスト（パスワード欄等）でない・未確定文字列なし・修飾キー込みの完全一致
 - 書式はスペース区切りで、Ctrl/Alt/Shift を `+` で連結しキー本体は英数字1文字。修飾キーなしのトークンは無効（素の文字を設定するとその文字の日本語入力が不可能になるため）
-- パースとマッチは `win32/tip/tip_passthrough_key.cc`（単体テスト `//win32/tip:tip_passthrough_key_test`）。設定値は初回参照時に読み取ってプロセス内でキャッシュするため、変更の反映には IME 再起動が必要
+- パースとマッチは `win32/tip/tip_passthrough_key.cc`（単体テスト `//win32/tip:tip_passthrough_key_test`）。設定値はキーイベントごとに生文字列を読み、変化したときだけ再パースする（IME 再起動不要）
+- 設定 UI は設定ダイアログ Conversion engine グループの「Passthrough alnum switch keys」欄（REG_SZ を読み書き）
 
 ## レジストリ設定一覧（HKCU\Software\Mozc）
 
@@ -171,7 +172,7 @@ Mozc ユーザー辞書（user_dictionary.db）を正本とし、AzooKey へは�
 | `TypoCorrectionEnabled` | DWORD | 1 | タイポ補正候補を出す |
 | `IdleResuggest` | DWORD | 0 | アイドル時にタイポ補正込みで候補窓を更新する |
 | `TypoCorrectionUseAi` | DWORD | 0 | タイポ候補の評価に Zenzai を使う（変換時のみ・低速） |
-| `PassthroughHalfAlnumKeys` | REG_SZ | （空） | アプリへ渡しつつ半角英数へ切り替えるキーのリスト（設定ダイアログ項目なし） |
+| `PassthroughHalfAlnumKeys` | REG_SZ | （空） | アプリへ渡しつつ半角英数へ切り替えるキーのリスト |
 
 エンジンが書き込む状態通知（GUI が読む）: `ZenzaiActive` / `ZenzaiGpuActive` / `ZenzaiWeightPath` / `ZenzaiTimestamp`。
 
