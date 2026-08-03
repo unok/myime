@@ -61,8 +61,9 @@ jobs:
             bazel-repo-windows-x64-
 
       # Bazel のアクションキャッシュ(コンパイル結果)。master が保存した直近を
-      # restore-keys で復元する。MOZC_VERSION の注入で無効化されるのは刻印参照
-      # ターゲットのみで、C++ コンパイル本体のキャッシュは生き残る
+      # restore-keys で復元する。master のバージョン注入は version.bzl 書き換え方式の
+      # ため（--action_env ではない）、刻印参照以外のアクションキーは PR と一致し、
+      # C++ コンパイル本体のキャッシュがそのまま使える
       - name: Restore Bazel disk cache
         uses: actions/cache/restore@v4
         with:

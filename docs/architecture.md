@@ -179,4 +179,9 @@ Mozc ユーザー辞書（user_dictionary.db）を正本とし、AzooKey へは�
 
 ## バージョン自動注入
 
-`build-x64.bat` が `MOZC_VERSION=3.33.<2009-05-24からの日数>.<UTC時刻HHmm>` を `--action_env` で注入する（mozc の `--use_mozc_version_env` フック）。ビルドごとにバージョンが単調増加するため、同版上書きによる「インストールしたのにバイナリが古いまま」が起きない。Windows Installer のファイル置換規則がバージョン比較で決まることへの対策。
+バージョンは `3.33.<2009-05-24からの日数>.<UTC時刻HHmm>` で、ビルドごとに単調増加するため、同版上書きによる「インストールしたのにバイナリが古いまま」が起きない。Windows Installer のファイル置換規則がバージョン比較で決まることへの対策。
+
+注入方法は2系統ある。
+
+- CI（Build x64）: `mozc/src/version.bzl` の `BUILD_OSS` / `REVISION` を sed で書き換える。このファイルは `//base:mozc_version_txt` アクションの入力なので、無効化は刻印参照ターゲットに限定され、C++ コンパイルの disk cache が生き残る
+- ローカル（build-x64.bat）: `--action_env=MOZC_VERSION=...` で注入する（mozc の `--use_mozc_version_env` フック）。--action_env は全アクションのキャッシュキーに入るため毎回フルビルドになるが（CI で実測ヒット率0%だった方式）、作業ツリーを汚さない利点を優先している
