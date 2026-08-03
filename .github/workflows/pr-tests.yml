@@ -172,4 +172,4 @@ jobs:
       - name: Test Bazel targets
         shell: cmd
         working-directory: mozc/src
-        run: bazelisk test --repository_cache=%GITHUB_WORKSPACE%\.bazel-repo-cache --disk_cache=%GITHUB_WORKSPACE%\.bazel-disk-cache --config=oss_windows --spawn_strategy=local //converter:azookey_user_dictionary_test //rewriter:word_register_rewriter_test //rewriter:merger_rewriter_test //rewriter:rewriter_test //engine:engine_converter_test //session:session_handler_test //config:config_handler_test
+        run: bazelisk test --repository_cache=%GITHUB_WORKSPACE%\.bazel-repo-cache --disk_cache=%GITHUB_WORKSPACE%\.bazel-disk-cache --config=oss_windows --spawn_strategy=local //converter:azookey_user_dictionary_test //rewriter:word_register_rewriter_test //rewriter:merger_rewriter_test //rewriter:rewriter_test //engine:engine_converter_test //session:session_handler_test //config:config_handler_test //win32/tip:tip_passthrough_key_test
