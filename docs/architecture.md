@@ -156,7 +156,7 @@ Mozc ユーザー辞書（user_dictionary.db）を正本とし、AzooKey へは�
 
 レジストリ `PassthroughHalfAlnumKeys`（REG_SZ、例 `Ctrl+T Ctrl+Q`）に設定したキーを、アプリへそのまま通しつつ半角英数モードへ切り替える。プレフィックスキー（tmux 等）の後続入力が IME に食われないようにする機能。
 
-実装は TSF の2段階（`win32/tip/tip_keyevent_handler.cc`）を使い分ける。**OnTestKeyDown では副作用を起こさず eaten=TRUE を返すだけ**にし、**OnKeyDown で `TipEditSession::SwitchInputModeAsync` を呼んでから eaten=FALSE を返す**。TSF は OnTestKeyDown が FALSE を返すと OnKeyDown を呼ばず、テスト段階では edit session も与えないため、切替を OnTestKeyDown 側で要求すると「キーはアプリに届くがモードだけ切り替わらない」状態になる（実機で発生した不具合）。
+実装は TSF の2段階（`win32/tip/tip_keyevent_handler.cc`）を使い分ける。**OnTestKeyDown では副作用を起こさず eaten=TRUE を返すだけ**にし、**OnKeyDown で `TipEditSession::SwitchInputModeAsync` を呼んでから eaten=FALSE を返す**。TSF は OnTestKeyDown が eaten=FALSE を返すと OnKeyDown を呼ばず、テスト段階では edit session も与えないため、切替を OnTestKeyDown 側で要求すると「キーはアプリに届くがモードだけ切り替わらない」状態になる（実機で発生した不具合）。
 
 - 設定した全キーが同じ動作で、常に HALF_ASCII への片方向切替（トグルや「ひらがなへ戻すキー」は存在しない。既に HALF_ASCII のときは切替コマンドを送らずパススルーのみ）
 - 発動条件: keydown・IME オン・無効コンテキスト（パスワード欄等）でない・未確定文字列なし・修飾キー込みの完全一致
