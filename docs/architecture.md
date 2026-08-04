@@ -152,17 +152,18 @@ Mozc ユーザー辞書（user_dictionary.db）を正本とし、AzooKey へは�
 
 **ヘッドレス検証の注意**: `session_handler_main.exe` は DLL プリロード対策により azookey-engine.dll を「自分と同じディレクトリ」からのみロードするため、exe を `build/x64/release/` にコピーして実行する。`--profile` は Windows では未存在ディレクトリしか指定できない（既存だと CreateDirectoryW が失敗）。サジェスト末尾の固定表示は `merger_rewriter.h` のトリム保護（タイポ補正と同じ関門、辞書登録はさらに後）を通る。
 
-## パススルー英数切替キー
+## パススルー IME オフキー
 
-レジストリ `PassthroughHalfAlnumKeys`（REG_SZ、例 `Ctrl+T Ctrl+Q`）に設定したキーを、アプリへそのまま通しつつ半角英数モードへ切り替える。プレフィックスキー（tmux 等）の後続入力が IME に食われないようにする機能。
+レジストリ `PassthroughImeOffKeys`（REG_SZ、例 `Ctrl+T Ctrl+Q`）に設定したキーを、アプリへそのまま通しつつ IME をオフ（直接入力）にする。プレフィックスキー（tmux 等）の後続入力が IME に食われないようにする機能。
 
-実装は TSF の2段階（`win32/tip/tip_keyevent_handler.cc`）を使い分ける。**OnTestKeyDown では副作用を起こさず eaten=TRUE を返すだけ**にし、**OnKeyDown で `TipEditSession::SwitchInputModeAsync` を呼んでから eaten=FALSE を返す**。TSF は OnTestKeyDown が eaten=FALSE を返すと OnKeyDown を呼ばず、テスト段階では edit session も与えないため、切替を OnTestKeyDown 側で要求すると「キーはアプリに届くがモードだけ切り替わらない」状態になる（実機で発生した不具合）。
+実装は TSF の2段階（`win32/tip/tip_keyevent_handler.cc`）を使い分ける。**OnTestKeyDown では副作用を起こさず eaten=TRUE を返すだけ**にし、**OnKeyDown で `TipEditSession::SwitchInputModeAsync(commands::DIRECT)` を呼んでから eaten=FALSE を返す**。TSF は OnTestKeyDown が eaten=FALSE を返すと OnKeyDown を呼ばず、テスト段階では edit session も与えないため、切替を OnTestKeyDown 側で要求すると「キーはアプリに届くがモードだけ切り替わらない」状態になる（実機で発生した不具合）。
 
-- 設定した全キーが同じ動作で、常に HALF_ASCII への片方向切替（トグルや「ひらがなへ戻すキー」は存在しない。既に HALF_ASCII のときは切替コマンドを送らずパススルーのみ）
+- `commands::DIRECT` は `tip_edit_session.cc` で open=false 経路（`TURN_OFF_IME`）に入る。言語バーの「直接入力」メニューと同じ経路。半角英数モード（`HALF_ASCII`）は IME がオンのままなので用途が異なる（当初これを使っており、実機で「半角英数固定入力になる」と判明して変更した）
+- 設定した全キーが同じ動作で、押すと IME をオフにする片方向切替（トグルや「日本語入力に戻すキー」は存在しない）。IME が既にオフのときは発動条件の `open` を満たさないため何もしない
 - 発動条件: keydown・IME オン・無効コンテキスト（パスワード欄等）でない・未確定文字列なし・修飾キー込みの完全一致
 - 書式はスペース区切りで、Ctrl/Alt/Shift を `+` で連結しキー本体は英数字1文字。修飾キーなしのトークンは無効（素の文字を設定するとその文字の日本語入力が不可能になるため）
 - パースとマッチは `win32/tip/tip_passthrough_key.cc`（単体テスト `//win32/tip:tip_passthrough_key_test`）。設定値はキーイベントごとに生文字列を読み、変化したときだけ再パースする（IME 再起動不要）
-- 設定 UI は設定ダイアログ Conversion engine グループの「Passthrough alnum switch keys」欄（REG_SZ を読み書き）
+- 設定 UI は設定ダイアログ Conversion engine グループの「Passthrough IME-off keys」欄（REG_SZ を読み書き）
 
 ## レジストリ設定一覧（HKCU\Software\Mozc）
 
@@ -175,7 +176,7 @@ Mozc ユーザー辞書（user_dictionary.db）を正本とし、AzooKey へは�
 | `TypoCorrectionEnabled` | DWORD | 1 | タイポ補正候補を出す |
 | `IdleResuggest` | DWORD | 0 | アイドル時にタイポ補正込みで候補窓を更新する |
 | `TypoCorrectionUseAi` | DWORD | 0 | タイポ候補の評価に Zenzai を使う（変換時のみ・低速） |
-| `PassthroughHalfAlnumKeys` | REG_SZ | （空） | アプリへ渡しつつ半角英数へ切り替えるキーのリスト |
+| `PassthroughImeOffKeys` | REG_SZ | （空） | アプリへ渡しつつ IME をオフにするキーのリスト |
 
 エンジンが書き込む状態通知（GUI が読む）: `ZenzaiActive` / `ZenzaiGpuActive` / `ZenzaiWeightPath` / `ZenzaiTimestamp`。
 
