@@ -85,10 +85,11 @@ jobs:
           restore-keys: |
             bazel-repo-windows-x64-
 
-      # Bazel のアクションキャッシュ(コンパイル結果)。exact key は毎回異なるため
-      # 各実行が更新済みキャッシュを保存し、次回は restore-keys で直近を復元する。
-      # MOZC_VERSION の注入で無効化されるのは刻印参照ターゲットのみで、
-      # C++ コンパイル本体のキャッシュは生き残る
+      # Bazel のアクションキャッシュ(コンパイル結果)。exact key(sha)は毎回異なるため
+      # 各実行が新キーで保存し、次回は restore-keys で直近を復元する（ローリング方式）。
+      # バージョン注入は version.bzl の書き換えで行う（下の Compute Mozc auto version 参照）。
+      # かつての --action_env=MOZC_VERSION 方式は全アクションのキャッシュキーを汚染し、
+      # 同一ソースの再ビルドでも 37分かかっていた（2026-08-03 実測・ヒット率 0%）
       - name: Cache Bazel disk cache
         uses: actions/cache@v4
         with:
@@ -184,6 +185,10 @@ jobs:
         working-directory: mozc/src
         run: python build_tools/update_deps.py --noqt --nollvm --nomsys2 --nondk
 
+      # バージョンは version.bzl の書き換えで注入する。このファイルは
+      # //base:mozc_version_txt アクションの入力なので、無効化されるのは刻印を参照する
+      # ターゲットだけで済む。--action_env=MOZC_VERSION 方式は全アクションの環境
+      # （=キャッシュキー）に値が入るため、毎回全キャッシュミスになる
       - name: Compute Mozc auto version
         shell: bash
         run: |
@@ -191,13 +196,16 @@ jobs:
           revision=$(date -u +%H%M)
           revision=$((10#$revision))
           version="3.33.${days}.${revision}"
+          sed -i -e "s/^BUILD_OSS = .*/BUILD_OSS = ${days}/" \
+                 -e "s/^REVISION = .*/REVISION = ${revision}/" mozc/src/version.bzl
+          grep -E "^(MAJOR|MINOR|BUILD_OSS|REVISION) = " mozc/src/version.bzl
           echo "MOZC_AUTO_VERSION=${version}" >> "$GITHUB_ENV"
           echo "MOZC_AUTO_VERSION=${version}"
 
       - name: Build Mozc x64 MSI
         shell: cmd
         working-directory: mozc/src
-        run: bazelisk build --repository_cache=%GITHUB_WORKSPACE%\.bazel-repo-cache --disk_cache=%GITHUB_WORKSPACE%\.bazel-disk-cache --config=oss_windows --spawn_strategy=local --action_env=MOZC_VERSION=%MOZC_AUTO_VERSION% //win32/installer:installer_x64
+        run: bazelisk build --repository_cache=%GITHUB_WORKSPACE%\.bazel-repo-cache --disk_cache=%GITHUB_WORKSPACE%\.bazel-disk-cache --config=oss_windows --spawn_strategy=local //win32/installer:installer_x64
 
       - name: Copy MSI
         run: copy mozc\src\bazel-bin\win32\installer\Mozc_x64.msi .
