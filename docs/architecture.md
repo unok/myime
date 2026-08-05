@@ -154,16 +154,16 @@ Mozc ユーザー辞書（user_dictionary.db）を正本とし、AzooKey へは�
 
 ## パススルー IME オフキー
 
-レジストリ `PassthroughImeOffKeys`（REG_SZ、例 `Ctrl+T Ctrl+Q`）に設定したキーを、アプリへそのまま通しつつ IME をオフ（直接入力）にする。プレフィックスキー（tmux 等）の後続入力が IME に食われないようにする機能。
+レジストリ `PassthroughImeOffModifiers`（REG_SZ、例 `Ctrl+Alt`）と `PassthroughImeOffKeys`（REG_SZ、例 `T, Q`）で指定したキーを、アプリへそのまま通しつつ IME をオフ（直接入力）にする。プレフィックスキー（tmux 等）の後続入力が IME に食われないようにする機能。
 
 実装は TSF の2段階（`win32/tip/tip_keyevent_handler.cc`）を使い分ける。**OnTestKeyDown では副作用を起こさず eaten=TRUE を返すだけ**にし、**OnKeyDown で `TipEditSession::SwitchInputModeAsync(commands::DIRECT)` を呼んでから eaten=FALSE を返す**。TSF は OnTestKeyDown が eaten=FALSE を返すと OnKeyDown を呼ばず、テスト段階では edit session も与えないため、切替を OnTestKeyDown 側で要求すると「キーはアプリに届くがモードだけ切り替わらない」状態になる（実機で発生した不具合）。
 
 - `commands::DIRECT` は `tip_edit_session.cc` で open=false 経路（`TURN_OFF_IME`）に入る。言語バーの「直接入力」メニューと同じ経路。半角英数モード（`HALF_ASCII`）は IME がオンのままなので用途が異なる（当初これを使っており、実機で「半角英数固定入力になる」と判明して変更した）
 - 設定した全キーが同じ動作で、押すと IME をオフにする片方向切替（トグルや「日本語入力に戻すキー」は存在しない）。IME が既にオフのときは発動条件の `open` を満たさないため何もしない
 - 発動条件: keydown・IME オン・無効コンテキスト（パスワード欄等）でない・未確定文字列なし・修飾キー込みの完全一致
-- 書式はスペース区切りで、Ctrl/Alt/Shift を `+` で連結しキー本体は英数字1文字。修飾キーなしのトークンは無効（素の文字を設定するとその文字の日本語入力が不可能になるため）
-- パースとマッチは `win32/tip/tip_passthrough_key.cc`（単体テスト `//win32/tip:tip_passthrough_key_test`）。設定値はキーイベントごとに生文字列を読み、変化したときだけ再パースする（IME 再起動不要）
-- 設定 UI は設定ダイアログ Conversion engine グループの「Passthrough IME-off keys」欄（REG_SZ を読み書き）
+- 修飾キーは全キー共通（キーごとの個別指定は不可）。修飾キーが1つも無い設定は無効（素の文字を指定するとその文字の日本語入力が不可能になるため）。キー本体は英数字1文字で、スペースまたはカンマ区切り
+- パースとマッチは `win32/tip/tip_passthrough_key.cc`（単体テスト `//win32/tip:tip_passthrough_key_test`）。設定値はキーイベントごとに2つの生文字列を読み、どちらかが変化したときだけ再パースする（IME 再起動不要）
+- 設定 UI は設定ダイアログ Conversion engine グループの「Passthrough IME-off keys」（修飾キーのチェックボックス）と「Keys」欄。同じライブラリの `ValidatePassthroughKeyConfig` で検証し、修飾キー未選択・不正トークンは `Update()` の先頭で弾いてエラーダイアログを出す（他の設定も保存しない）
 
 ## レジストリ設定一覧（HKCU\Software\Mozc）
 
@@ -176,7 +176,8 @@ Mozc ユーザー辞書（user_dictionary.db）を正本とし、AzooKey へは�
 | `TypoCorrectionEnabled` | DWORD | 1 | タイポ補正候補を出す |
 | `IdleResuggest` | DWORD | 0 | アイドル時にタイポ補正込みで候補窓を更新する |
 | `TypoCorrectionUseAi` | DWORD | 0 | タイポ候補の評価に Zenzai を使う（変換時のみ・低速） |
-| `PassthroughImeOffKeys` | REG_SZ | （空） | アプリへ渡しつつ IME をオフにするキーのリスト |
+| `PassthroughImeOffModifiers` | REG_SZ | （空） | パススルー IME オフキーの修飾キー（`Ctrl+Alt` 形式、全キー共通） |
+| `PassthroughImeOffKeys` | REG_SZ | （空） | パススルー IME オフキーのキー本体（スペース/カンマ区切り） |
 
 エンジンが書き込む状態通知（GUI が読む）: `ZenzaiActive` / `ZenzaiGpuActive` / `ZenzaiWeightPath` / `ZenzaiTimestamp`。
 
