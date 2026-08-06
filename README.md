@@ -76,14 +76,18 @@ reg add HKCU\Software\Mozc /v IdleResuggest /t REG_DWORD /d 1 /f
 
 ### パススルー IME オフキー
 
-設定したキー（例: Ctrl+T）を押すと、キーはアプリにそのまま届き、同時に IME がオフ（直接入力）になる。tmux などのプレフィックスキーの後続入力が IME に食われなくなる。設定ダイアログの「Passthrough IME-off keys」欄で設定する（`reg add` での直接設定も可、REG_SZ）。
+設定したキー（例: Ctrl+T）を押すと、キーはアプリにそのまま届き、同時に IME がオフ（直接入力）になる。tmux などのプレフィックスキーの後続入力が IME に食われなくなる。
+
+設定ダイアログの「Passthrough IME-off keys」の表で、1行に1つの組み合わせを登録する。各行は Ctrl / Alt / Shift のチェックとキー1文字（英数字）で、Add で行を追加、Remove で選択行を削除する。`Ctrl+T` と `Alt+B` のようにキーごとに違う修飾キーを併用できる。不正な行（修飾キー未選択、キーが英数字1文字でない）は適用時に行番号付きのエラーを表示して保存しない。行が無ければ機能オフ。
+
+レジストリで直接設定する場合は組み合わせをスペース区切りで書く。
 
 ```cmd
-reg add HKCU\Software\Mozc /v PassthroughImeOffKeys /t REG_SZ /d "Ctrl+T Ctrl+Q" /f
+reg add HKCU\Software\Mozc /v PassthroughImeOffKeys /t REG_SZ /d "Ctrl+T Alt+B Ctrl+Shift+M" /f
 ```
 
 - 設定した全キーが同じ動作で、押すと IME をオフにする（トグルではない）。オフの状態は持続し、日本語入力に戻すのは通常の切替キー（半角/全角など）で行う
-- 書式はスペース区切り。Ctrl / Alt / Shift を `+` でつなぎ、キー本体は英数字1文字。修飾キーなしの指定は無視される
+- キーの大文字小文字は区別しない（`t` と `T` は同じ）。Shift を押す必要があるかは Shift のチェックだけで決まり、修飾キーは完全一致で判定する。例えば Ctrl のみのとき Ctrl+Shift+T では発動しない
 - IME オンかつ未確定文字列がないときだけ発動する。設定変更は次のキー入力から反映される（IME 再起動不要）
 
 ## トラブルシューティング
