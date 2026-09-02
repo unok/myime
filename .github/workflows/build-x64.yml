@@ -162,6 +162,10 @@ jobs:
 
       - name: Run engine regression tests (typo correction)
         shell: pwsh
+        env:
+          # テストは日本語を出力する。Windows ランナーの既定 stdout（cp1252）だと
+          # UnicodeEncodeError で落ちるため UTF-8 モードにする
+          PYTHONUTF8: "1"
         run: |
           python scripts/tests/typo_conversion_test.py
           if ($LASTEXITCODE -ne 0) { throw "typo_conversion_test.py failed" }
