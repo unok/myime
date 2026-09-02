@@ -234,20 +234,6 @@ if exist "%LLAMA_DIR%" (
     echo   llama.cpp DLLs: NOT FOUND
 )
 
-:: Check ARM64
-set "LLAMA_ARM64_DIR=%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows-arm64"
-if exist "%LLAMA_ARM64_DIR%" (
-    echo.
-    echo   Path ^(ARM64^): %LLAMA_ARM64_DIR%
-    for %%f in (ggml.dll ggml-base.dll ggml-cpu.dll ggml-vulkan.dll llama.dll) do (
-        if exist "%LLAMA_ARM64_DIR%\%%f" (
-            echo     [OK] %%f
-        ) else (
-            echo     [--] %%f
-        )
-    )
-)
-
 echo.
 
 :: ==============================================

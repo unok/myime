@@ -114,7 +114,7 @@ if !ERRORLEVEL! NEQ 0 (
 echo Copying DLLs to %OUTPUT_DIR%...
 copy /y build\bin\Release\*.dll "..\%OUTPUT_DIR%\" >nul 2>&1
 
-:: .lib files - paths verified for b4500
+:: .lib files - paths verified for b4846
 echo Copying .lib files...
 del /q "..\%OUTPUT_DIR%\ggml-cpu.lib" 2>nul
 copy /y build\src\Release\llama.lib "..\%OUTPUT_DIR%\"

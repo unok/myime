@@ -37,7 +37,7 @@ myime/
 |-----------|------|
 | `build-x64.bat` | x64 用 Swift DLL + Mozc MSI をビルド |
 | `build-x64-low.bat` | `build-x64.bat` を低優先度で実行（作業しながらビルドする用） |
-| `build-mozc.bat` | Mozc のみビルド（Swift DLL はスキップ） |
+| `build-mozc.bat` | `build-x64.bat --mozc-only` のラッパー。Swift DLL ビルドをスキップして Mozc の MSI だけをビルドする（`build\x64\release` にビルド済み DLL が必要） |
 | `build-arm64.bat` | ARM64 用ビルド（棚上げ中・動作しない） |
 | `clean.bat` | ビルド成果物をクリーンアップ |
 | `restart-ime.bat` | IME プロセスを再起動 |
@@ -86,8 +86,8 @@ git commit -m "Update mozc submodule"
 
 | ワークフロー | トリガー | 内容 |
 |---|---|---|
-| PR Tests | pull_request | Swift DLL ビルド + swift test + Bazel の主要ターゲットの build/test（MSI なし、約16分） |
-| Build x64 | master への push / 手動実行 | フル MSI ビルド（成果物 `Mozc_x64` をダウンロード可能） |
+| PR Tests | pull_request | Swift DLL ビルド + swift test + Bazel の主要ターゲットの build/test（MSI なし、実測 26〜37 分（2026-08）） |
+| Build x64 | master への push / 手動実行 | フル MSI ビルド（成果物 `Mozc_x64` をダウンロード可能）。テストは実行しない（#51 で対応予定） |
 
 `**.md`・`docs/**` だけの変更ではどちらも走らない。キャッシュの保存は master（Build x64）だけが行い、PR は復元のみ。PR 側でも保存すると 1GB 超の bazel-disk キャッシュが PR ごとに積み上がり、上限 10GB の LRU で Qt / llama のキャッシュが追い出されて master のビルドが 40分 → 1時間20分超に悪化する（2026-08-03 実測）。
 

@@ -28,6 +28,10 @@ jobs:
         shell: bash
         run: cat scripts/llama-cpp-version.env >> "$GITHUB_ENV"
 
+      - name: Load Vulkan SDK version
+        shell: bash
+        run: cat scripts/vulkan-sdk-version.env >> "$GITHUB_ENV"
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -48,21 +52,7 @@ jobs:
 
       - name: Install Vulkan SDK
         shell: pwsh
-        run: |
-          $vulkanVersion = "1.3.296.0"
-          $installerUrl = "https://sdk.lunarg.com/sdk/download/$vulkanVersion/windows/VulkanSDK-$vulkanVersion-Installer.exe"
-          $installerPath = "$env:TEMP\VulkanSDK-Installer.exe"
-
-          Write-Host "Downloading Vulkan SDK $vulkanVersion..."
-          Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
-
-          Write-Host "Installing Vulkan SDK..."
-          Start-Process -FilePath $installerPath -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait
-
-          # Set environment variable
-          $vulkanPath = "C:\VulkanSDK\$vulkanVersion"
-          echo "VULKAN_SDK=$vulkanPath" >> $env:GITHUB_ENV
-          echo "$vulkanPath\Bin" >> $env:GITHUB_PATH
+        run: scripts/ci/install-vulkan-sdk.ps1
 
       - name: Cache Qt build
         id: cache-qt

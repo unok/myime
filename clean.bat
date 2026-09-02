@@ -68,12 +68,6 @@ if exist "%OUTPUT_DIR_ARM64%" (
     rmdir /s /q "%OUTPUT_DIR_ARM64%" 2>nul
 )
 
-:: Clean old ninja build directories
-if exist "%MOZC_SRC%\out_win" (
-    echo Cleaning old ninja build directory...
-    rmdir /s /q "%MOZC_SRC%\out_win" 2>nul
-)
-
 :: Clean log files
 echo Cleaning log files...
 del /q "%ROOT_DIR%*.log" 2>nul
@@ -91,26 +85,13 @@ if exist "%ROOT_DIR%llama.cpp-build" rmdir /s /q "%ROOT_DIR%llama.cpp-build" 2>n
 echo Cleaning llama.cpp DLLs...
 del /q "%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows\*.dll" 2>nul
 del /q "%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows\*.lib" 2>nul
-del /q "%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows-arm64\*.dll" 2>nul
-del /q "%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows-arm64\*.lib" 2>nul
-
-:: Clean old directories
-if exist "%ROOT_DIR%build-azookey" rmdir /s /q "%ROOT_DIR%build-azookey" 2>nul
-if exist "%ROOT_DIR%build-azookey2" rmdir /s /q "%ROOT_DIR%build-azookey2" 2>nul
-if exist "%ROOT_DIR%build-azookey3" rmdir /s /q "%ROOT_DIR%build-azookey3" 2>nul
-if exist "%ROOT_DIR%build-reference" rmdir /s /q "%ROOT_DIR%build-reference" 2>nul
-if exist "%ROOT_DIR%reference-ime" rmdir /s /q "%ROOT_DIR%reference-ime" 2>nul
-if exist "%ROOT_DIR%test-comparison" rmdir /s /q "%ROOT_DIR%test-comparison" 2>nul
-if exist "%ROOT_DIR%test-detection" rmdir /s /q "%ROOT_DIR%test-detection" 2>nul
-if exist "%ROOT_DIR%test-incremental" rmdir /s /q "%ROOT_DIR%test-incremental" 2>nul
-if exist "%ROOT_DIR%test-zenzai" rmdir /s /q "%ROOT_DIR%test-zenzai" 2>nul
 
 echo.
 echo ==============================================
 echo Cleanup completed!
 echo ==============================================
 echo.
-echo To rebuild from scratch, run: build-x64.bat or build-arm64.bat
+echo To rebuild from scratch, run: build-x64.bat
 echo.
 
 endlocal
