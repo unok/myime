@@ -2,160 +2,121 @@
 
 fork / subtree が upstream に対して持つパッチの一覧と、各パッチの要否・処分を記録する。運用は**最小パッチ方針**（[CONTEXT.md](../CONTEXT.md) 参照: upstream 既存ファイルへの差分を最小化、新規ファイル追加は許容）に従う。
 
-調査基準日: **2026-06-11**。upstream は動き続けるため、rebase / subtree pull のたびに本ドキュメントを更新すること。
+調査基準日: **2026-09-02**。upstream は動き続けるため、rebase / subtree pull のたびに本ドキュメントを更新すること。進行中の追従作業は Issue #56 にまとめている。
 
 ## サマリ
 
-| リポジトリ | fork独自パッチ | upstreamからの遅れ | 方針 |
+| リポジトリ | fork 独自パッチ | upstream からの遅れ | 方針 |
 |---|---|---|---|
-| mozc (`unok/mozc` **patch-myime-next**) | 12コミット (+2239/-13, 27ファイル) | **0（2026-06-12 rebase 済み）** | rebase 完了（§1 参照）。以後は定期追従 |
-| AzooKeyKanaKanjiConverter (`unok/AzooKeyKanaKanjiConverter` windows-llama-patch) | 実質1コミット | 64コミット (~9ヶ月) | 追従を計画 |
-| swift-tokenizers (`unok/swift-tokenizers` windows-swift621-patch) | 9コミット | 128コミット (~15ヶ月) | **fork 廃止へ移行**（下記） |
+| mozc（`unok/mozc` `patch-myime-next`） | 43 コミット（+4,708/−27、67 ファイル） | **0**（2026-09-02 に `4b1953a93`（2026-08-27）へ rebase 済み） | 定期追従。次回の衝突箇所は §1 |
+| AzooKeyKanaKanjiConverter（`unok/AzooKeyKanaKanjiConverter` `windows-llama-patch`） | 10 コミット（Swift 4 ファイルを含む） | 69 コミット（分岐点 2025-08-26、約 12 か月） | #49 で追従。upstream main の上に Windows パッチを移植し直す |
+| swift-tokenizers（`unok/swift-tokenizers` `windows-upstream-patch`） | 2 コミット | 6 コミット（基点 2026-05-19） | #50 で rebase |
+| swift-huggingface（`unok/swift-huggingface` `windows-patch`） | 1 コミット | 2 コミット（基点 v0.9.0） | #50 で rebase。upstream への Windows 対応 PR は未着手 |
 
-## 1. mozc fork（patch-myime → **patch-myime-next に rebase 済み、2026-06-12**）
+## 1. mozc fork（`patch-myime-next`）
 
-### 2026-07 の機能追加による新規差分（2026-07-29 棚卸し）
+### rebase 履歴
 
-CPU-only ビルド化 → Zenzai/GPU 切替 → タイポ補正 → アイドル再サジェストの一連の作業で、fork 独自差分が以下に広がった。いずれも myime 固有機能のため upstream PR 候補ではない。次回 rebase 時の衝突ホットスポットとして記録する。
+| 日付 | upstream の位置 | 結果 |
+|---|---|---|
+| 2026-06-12 | `fea1ebace`（2026-06-11） | 旧 `patch-myime` から `patch-myime-next` へ。独自コミット 14 → 12（陳腐化パッチ・ノイズ・ARM64 関連を破棄、`ConversionOptions` API 移行、universal installer 構造へ移行） |
+| 2026-09-02 | `4b1953a93`（2026-08-27、109 コミット分） | 41 コミットをそのまま rebase し、proto 番号の振り直しと DLL リスト整理を追加して 43 コミット。旧先端はブランチ `patch-myime-next-backup-20260902` に温存 |
+
+2026-09-02 の rebase で解決した衝突は 4 件。
+
+- `prediction/realtime_decoder.cc`（2 件）: upstream が `MakeSegments` / `ConversionSegmentsToResult` を `converter/converter_util.cc` へ移動。fork 側の変更（`description` 引き継ぎ）は後続コミットで撤回済みだったため upstream 側を採用
+- `converter/BUILD.bazel` と `converter/converter.cc`: upstream の `converter_util` 追加と fork の `engine_config` 追加が隣接。両方を残す
+- `session/session.cc`: upstream が `SuggestWithPreferences` を `Suggest(composer, context, preferences)` に改名。fork のアイドル再サジェスト分岐を新名で書き直す。他の呼び出し箇所は自動的に新名で適用された
+
+検証: `//win32/tip:tip_text_service_impl` のビルドと PR Tests の 8 テストがローカルで通過（Bazel 9.0.2）。upstream の MODULE.bazel 追加分（abseil-py 2.1.0、google_benchmark 1.9.5、re2）はそのまま取り込み。ツールチェーン（Qt 6.9.1、LLVM 20.1.1、Ninja 1.13.2）は変更なし。
+
+### proto 番号
+
+fork が追加した `SessionCommand::REQUEST_TYPO_SUGGESTION` と `Output.launch_tool_arg` は、2026-09-02 に **1000** へ移した。それまでの 28 / 27 は upstream の次の追加番号（`REQUEST_NWP = 27`、`server_version = 26` の直後）と正面衝突する位置だった。以後 fork で proto フィールドを足すときは 1000 番台を使う。クライアント（TIP）とサーバは同じ MSI で更新されるため互換性の問題はない。
+
+### 独自差分の所在（次回 rebase の衝突ホットスポット）
+
+いずれも myime 固有機能のため upstream PR 候補ではない。
 
 | 領域 | ファイル | 内容 |
 |---|---|---|
-| converter | `azookey_immutable_converter.cc` | タイポ候補への SPELLING_CORRECTION/NO_HISTORY_LEARNING 付与、FFI 任意取得（SetTypoCorrection*/SetZenzai*）、実行タイミングのゲート（変換・アイドルのみ。予測器内部変換 `used_in_predictor_realtime_conversion` は除外） |
-| converter | `engine_config.h` | レジストリ読み取り関数群（ZenzaiEnabled/ZenzaiUseGpu/TypoCorrectionEnabled/IdleResuggest/TypoCorrectionUseAi）とモデルパス2箇所探索 |
-| gui | `config_dialog/{config_dialog.cc,.h,.ui}` | Conversion engine グループのチェックボックス5つ（レジストリ直読み書き、config.proto 無変更） |
-| protocol | `commands.proto` | `SessionCommand::REQUEST_TYPO_SUGGESTION = 28` |
-| session | `session.cc/.h` | 上記コマンドのハンドラ、`Suggest(input, idle_resuggest)` |
-| session | `session_handler_tool.cc/.h` | ヘッドレステスト用の `REQUEST_TYPO_SUGGESTION` コマンド |
-| engine | `engine_converter.cc` + `engine_converter_interface.h` | `ConversionPreferences.idle_resuggest` の貫通 |
+| converter | `azookey_immutable_converter.cc/.h`（新規）、`azookey_user_dictionary.cc/.h`（新規） | AzooKey DLL のロードと JSON 候補の取り込み、タイポ候補の属性付与、Mozc ユーザー辞書の AzooKey へのプッシュ |
+| converter | `engine_config.h` | レジストリ読み取り（ZenzaiEnabled / ZenzaiUseGpu / TypoCorrectionEnabled / IdleResuggest / TypoCorrectionUseAi / パススルーキー）とモデルパス探索 |
+| converter | `converter.cc` | AzooKey 時の `CompletePosIds` 早期 return、`Reload` でのユーザー辞書プッシュ |
+| engine | `engine.cc`、`engine_converter.cc`、`engine_converter_interface.h` | `NoOpImmutableConverter`、`ConversionPreferences.idle_resuggest`、辞書登録候補の確定抑止 |
+| protocol | `commands.proto` | `REQUEST_TYPO_SUGGESTION = 1000`、`Output.launch_tool_arg = 1000` |
+| session | `session.cc/.h`、`session_handler_tool.cc/.h` | `REQUEST_TYPO_SUGGESTION` ハンドラ、ヘッドレス検証コマンド |
 | request | `options.h` | `ConversionOptions.idle_resuggest` |
-| prediction | `dictionary_predictor.cc` | SPELLING_CORRECTION 候補のトリム後再追加、`RemoveMissSpelledCandidates` の除外ガード |
-| rewriter | `merger_rewriter.h` | サジェスト件数トリムからの SPELLING_CORRECTION 保護 |
-| win32/tip | `tip_text_service.cc` + `tip_keyevent_handler.cc` | アイドルタイマー（400ms）→ REQUEST_TYPO_SUGGESTION → UI-only 候補更新 |
-| win32/installer 他 | バージョン注入（`MOZC_VERSION` 環境変数、upstream 既存フックの利用のみ） | ビルドごとの単調増加バージョン |
+| prediction | `dictionary_predictor.cc`、`result.cc` | SPELLING_CORRECTION と辞書登録候補のトリム後再追加、AZ / AZ1 デバッグラベル |
+| rewriter | `merger_rewriter.h`、`word_register_rewriter.cc/.h`（新規） | サジェスト件数トリムからの保護、辞書登録候補の注入 |
+| gui | `config_dialog/*`、`zenzai_download/*`（新規）、`about_dialog/*` | Conversion engine グループとパススルーキー表、Zenzai モデル DL、バージョン表示 |
+| win32/tip | `tip_text_service.cc`、`tip_keyevent_handler.cc`、`tip_edit_session_impl.cc` | アイドルタイマー → REQUEST_TYPO_SUGGESTION、パススルー IME オフキー、単語登録ダイアログ起動 |
+| win32/installer、custom_action | `BUILD.bazel`、`*.wxs`、`custom_action.cc` | AzooKey DLL とリソースバンドルの同梱、Zenzai モデルの DL |
+| bazel | `BUILD.azookey_dlls.bazel` | 同梱 DLL の一覧（Swift ランタイム 15 本 + llama.cpp 5 本） |
 
-myime リポジトリ側（fork 外）: `TypoCorrectionReadingGenerator.swift`（新規）、`AzookeyEngine.swift` のタイポ2パス・GPU切替、`scripts/ci/build-llama-cpp.bat` の `GGML_BACKEND_DL=ON` 化。
-
-**2026-06-12 に upstream/master（`fea1ebace`, 2026-06-11時点）へ rebase 完了。** 新ブランチ `patch-myime-next`（旧 `patch-myime` はバックアップタグ `patch-myime-backup-20260612` とともに温存。master マージ時に改名予定）。
-
-rebase 結果: fork 独自コミットは **14 → 12** にスリム化（27ファイル, +2239/-13。12の内訳 = 機能パッチ9 + .bazelrc復元 + rules_swift pin削除 + ConversionOptions移行）。
-
-- 破棄した陳腐化パッチ: rules_cc/rules_python バンプ、ARM64 関連2件（棚上げ）、**rules_swift 3.4.1 pin（rules_apple 4.5.2 が 3.5.0 を要求するため不要化）**、.bazelrc の32bitツールチェーン削除（upstream の x86 パッチ復活と整合させ撤回）
-- 破棄したノイズ: converter.cc の LOG、session.cc/engine_converter.cc/win32_ipc.cc の実質無変更・トレース
-- 破棄した暫定対応: wxs の Windows バージョンチェック無効化（upstream の条件 build≥17763 は Insider でも通過するため不要）
-- 新規追従対応: `ImmutableConverterInterface::Convert` の **ConversionOptions API 移行**（旧 ConversionRequest、実装は引数未使用のため機械的置換）
-- installer は upstream の universal installer 対応構造（単一 genrule + `build_msi`）に移行し、AzooKey DLL/リソースバンドル/`--azookey_dll_dir` をグラフト。**upstream が build_installer→build_msi 改名で UAC インストーラ検出問題を解決済み**（myime 側の RunAsInvoker 回避は無害だが原理的に不要に）
-- 検証: `Mozc_x64.msi` 生成成功（2026-06-12、Bazel 9.0.2）
-
-以下は rebase 前（2026-06-11 調査時点）の記録。
-
-分岐点: `348a49c71`（2025-12-25）。upstream/master は `9afbd9860` まで進行。
-
-### パッチ一覧と処分
-
-| コミット | 内容 | 処分 |
-|---|---|---|
-| `221c3fdf3` | AzooKey + Zenzai 統合本体（azookey_immutable_converter 等、新規867行） | **保持**（コア） |
-| `49a4fea78` | Zenzai ダウンロードダイアログを手動案内UIに変更 | **保持** |
-| `ab4453b7f` | 新 JSON 候補フォーマット対応 | **保持** |
-| `da0f87049` | NoOpImmutableConverter 追加・ggml-vulkan.dll 対応 | **保持** |
-| `e6ee4446d` | MSI インストール時の Zenzai モデルダウンロード（CustomAction） | **保持**（rebase 時 upstream #1500 と衝突確実 → 再実装前提） |
-| `7df872d77` | 未使用 llava_shared.dll / mtmd.dll をインストーラから削除 | **保持** |
-| `8fbddcbbb` | MSI ファイル名を `Mozc_X64.msi` / `Mozc_ARM64.msi` に統一 | **保持**（ARM64 部分は棚上げに合わせ縮小可） |
-| `311117f40` | デバッグログ削除・renderer/IPC ログ更新 | 整理対象（バグ修正部分のみ残す） |
-| `c14f6b850` | ARM64 MSI ビルドサポート | **破棄候補**（ARM64 棚上げ） |
-| `951fa5ecd` | `.bazelrc` の windows-arm64 プラットフォーム名修正 | **破棄候補**（ARM64 棚上げ） |
-| `80854da29` | rules_python 1.7.0 | **破棄**（陳腐化: upstream は 1.9.0） |
-| `9ad5c5153` | rules_cc 0.2.16 | **破棄**（陳腐化: upstream は 0.2.17） |
-
-### ファイル単位の処分（コミット横断）
-
-| 変更 | 分類 | 処分 |
-|---|---|---|
-| `ipc/ipc_path_manager.cc`: IPC キー生成を SHA1(SID) からランダム16バイトに修正 | 独立バグ修正 | **保持**。upstream は現在も SHA1(SID) 方式のまま（2026-06-11 確認）→ **upstream PR 候補**。rebase 時は #1515（Singleton除去）との衝突に注意 |
-| `renderer/renderer_client.cc`: renderer 再起動時の IPC パスキャッシュ Clear | 独立バグ修正 | **保持**・upstream PR 候補 |
-| `converter/converter.cc`: ResizeSegment への大量 LOG(INFO)（機能変更なし） | ノイズ | **次回 rebase で破棄** |
-| `session/session.cc` / `engine_converter.cc`: include追加・整形のみ（実質無変更） | ノイズ | **次回 rebase で破棄** |
-| `ipc/win32_ipc.cc`: OutputDebugStringA トレース | ノイズ | **次回 rebase で破棄** |
-| `installer_oss_64bit.wxs`: Windows バージョンチェックのコメントアウト（Insider対応） | 暫定対応 | rebase 時に要否再評価 |
+upstream 側でこの 3 か月に動いたファイルは `protocol/commands.proto`（9 コミット）と `converter/converter.cc`（7 コミット）が突出している。次回も同じ 2 ファイルから確認する。
 
 ### ARM64 の扱い
 
-**棚上げ（凍結）**。直近で ARM64 CI も一時無効化済み（`03fe68b8b`）。ARM64 関連パッチ（`c14f6b850`, `951fa5ecd`, `.bazelrc` の `windows_arm64` config, `installer_arm64` genrule 分割, `@azookey_dlls_arm64`）はすべて破棄候補。再開する場合は fork 独自方式ではなく、upstream に新設された **universal installer**（#1434 `enable_win_universal_installer`, #1460 ARM64ネイティブ Ninja）への乗り換えを前提に再設計する。
+**棚上げ（凍結）**。ARM64 CI も無効化済み（`03fe68b8b`）。再開する場合は fork 独自方式ではなく、upstream の universal installer（#1434 `enable_win_universal_installer`、#1460 ARM64 ネイティブ Ninja）への乗り換えを前提に再設計する。`build-arm64.bat` は動作しないまま意図的に残している。
 
-### rebase 手順（実施時のガイド）
+### rebase 手順
 
-1. ノイズ（converter.cc ログ, session.cc 等, win32_ipc.cc トレース）と陳腐化パッチ（rules_cc / rules_python）、ARM64 関連を破棄
-2. 独立バグ修正（ipc_path_manager / renderer_client）を upstream 新コード（#1515 Singleton 除去後）に合わせて再適用 — 可能なら upstream へ PR
-3. AzooKey 統合（新規ファイル群）はそのまま載る見込み。既存ファイル側の接点（engine.cc, MODULE.bazel, installer BUILD/wxs, custom_action）は upstream #1500（COM 登録の CustomAction 化）後の構造に合わせて再適用
-4. 衝突ホットスポット: `win32/installer/*`, `custom_action.cc`, `ipc_path_manager.cc`, `MODULE.bazel`
+1. `patch-myime-next` をバックアップブランチ（`patch-myime-next-backup-<日付>`）に温存する
+2. 別 worktree で `git rebase upstream/master` を実行し、衝突は上記ホットスポット表で意図を確認しながら解決する
+3. `//win32/tip:tip_text_service_impl` のビルドと PR Tests の 8 テストをローカルで通す
+4. push は SSH URL で行う（gh の OAuth トークンには `workflow` スコープが無く、upstream の workflow 変更を含む push が拒否される）
+5. myime 側で submodule ポインタを更新し、本ドキュメントのサマリと rebase 履歴を書き換える
 
-## 2. AzooKeyKanaKanjiConverter subtree（windows-llama-patch）
+## 2. AzooKeyKanaKanjiConverter subtree（`windows-llama-patch`）
 
-分岐点: `75c7c2b`（2025-08-26）。fork 独自は実質 `6162af9` の1コミット（Swift ソース変更ゼロ）。
+fork の分岐点は upstream `75c7c2b`（2025-08-26、v0.11.1 相当）。myime の subtree が最後に pull したのは fork の `ae68ff5`（2026-02-10）で、以後はローカルで直接編集し、2026-09-02 に `git subtree push` で fork へ反映した（fork 先端 `ad565e81b`）。fork と subtree の差分は 0。
 
-### パッチ一覧と処分
+### fork 独自パッチ
 
 | 変更 | 処分 |
 |---|---|
-| `Package.swift`: swift-tokenizers をローカルパス参照に変更、Windows 用 linkerSettings（llama/ggml系 + `-Llib/windows`）、systemLibrary 名変更 | **保持**（upstream は分岐後この領域を未変更 = 全パッチ依然必要）。ただし swift-tokenizers 廃止移行（§3）に伴い参照先を変更予定 |
-| `Sources/llama.cpp/include/`: llama.cpp ヘッダ vendoring（2025年後半世代） | **保持**。ただし llama.cpp バージョン単一ソース化（下記）に合わせて出自バージョンを特定・固定する |
-| `lib/windows/` ビルド済み DLL/LIB（約28MB）のコミット | **fork から削除する**。ローカルの削除コミット `22cde1055` を `git subtree push` で fork に反映する（CI・build-x64.bat ともソースビルドの仕組みあり。未反映のまま subtree pull すると DLL が復活するので注意） |
-| `Package-patched.swift`（204行） | **削除**。どこからも参照されていない実験的残骸 |
+| `Package.swift`: swift-tokenizers を `unok/swift-tokenizers` の `windows-upstream-patch` ブランチ参照に、Windows 用 systemLibrary（`Sources/llama.cpp`、`-Llib/windows`）、linkerSettings | **保持**。upstream は分岐後この領域を未変更 |
+| `Sources/llama.cpp/include/`: llama.cpp b4846（`fkunn1326/llama.cpp`、Zenzai トークナイザパッチ入り）のヘッダ vendoring | **保持**。llama.cpp 更新は #54 |
+| `Sources/llama.cpp/llama.h`（直下）: `include/llama.h` と別世代の重複コピー（`GPT2_SMALL_JAPANESE_CHAR` が 29、`include/` 側は 30）。`llama.pc` の includedir はこちらを指す | **#49 で `include/` 側に一本化** |
+| `ZenzContext.swift`、`Zenz.swift`、`ConvertRequestOptions.swift`、`KanaKanjiConverter.swift`: Windows で ggml-cpu.dll / ggml-vulkan.dll を llama.dll と同じディレクトリから明示ロード（`GGML_BACKEND_DL`）、GPU（Vulkan）のオプトインと起動時ウォームアップ | **保持**。upstream の Zenz リファクタ（#325）と `ZenzContext.swift` で衝突する（下記） |
+| `DictionaryBuilder.swift`: `import Collections` → `import OrderedCollections` | upstream main と同一。追従で収束 |
+| `.gitmodules`: 辞書 submodule が旧組織 `ensan-hcl/*` のまま | ルートの `.gitmodules` が実効のため実害なし。#49 で `azooKey/*` に揃える |
 
-### llama.cpp バージョンの単一ソース化（2026-06-11 実施済み）
+### llama.cpp バージョンの単一ソース化
 
-**正準定義: `scripts/llama-cpp-version.env`**（`LLAMA_CPP_REPO` + `LLAMA_CPP_VERSION`）。CI ワークフロー・`build-x64.bat`・`scripts/ci/build-llama-cpp.bat` はすべてここを参照する。(run-ci-build.bat は 2026-07 に廃止)
+**正準定義: `scripts/llama-cpp-version.env`**（`LLAMA_CPP_REPO` + `LLAMA_CPP_VERSION`）。CI ワークフロー・`build-x64.bat`・`scripts/ci/build-llama-cpp.bat` はすべてここを参照する。
 
-調査で確定した事実:
+- vendored ヘッダの出自は `fkunn1326/llama.cpp` release b4846（commit `10131b23ee`、2025-03-07）。この fork は 2025-03-10 以降更新がない
+- `include/llama.h` には Zenzai 用トークナイザパッチ（`LLAMA_VOCAB_PRE_TYPE_GPT2_SMALL_JAPANESE_CHAR = 30`）が入っている。**vanilla をビルドすると zenz モデルの読み込み/トークン化が壊れる**
+- `ggml-webgpu.h` 等 4 本のスタブヘッダのみ b7310 以降の世代から追加コピーされたもの（実害なし）
+- 更新先候補は `azooKey/llama.cpp` の `b9637-azookey.1`（2026-07-28、同トークナイザ互換入り）。ただし upstream AKKKC の Package.swift が b4846 の xcframework を参照している間は Swift 側の API 差分を myime 単独で抱えることになるため保留（#54）
 
-- vendored ヘッダの出自は **`fkunn1326/llama.cpp` release `b4846`**（commit `10131b23ee`）。blob 一致18/22ファイルで確認
-- `llama.h` には **Zenzai 用トークナイザパッチ1行**（`LLAMA_VOCAB_PRE_TYPE_GPT2_SMALL_JAPANESE_CHAR = 30`）が入っており、出自は vanilla ではなく azooKey 系 fork。**vanilla をビルドすると zenz モデルの読み込み/トークン化が壊れる**
-- 修正前は CI=`b4500`(vanilla) / bat=`b4547`(vanilla) / ヘッダ=b4846(パッチ入り) と3分裂しており、ソースビルド経路で生成された DLL は Zenzai が機能しない恐れがあった
-- `ggml-webgpu.h` 等4本のスタブヘッダのみ b7310 以降の世代から追加コピーされたもの（実害なし）
+### upstream 追従計画（#49）
 
-将来 llama.cpp を更新する場合は、fork（パッチ入り）の新タグを用意してから `llama-cpp-version.env` を書き換えること。
+upstream main（2026-08-30）は分岐点から 69 コミット先。主な変更は破壊的変更 `custom(URL)` → `tableName(String)`（#298）、新辞書フォーマット（#339）、Zenz リファクタ（#325）、右文脈入力（#340）、Zenzai 高速化（#350〜#354）、Converter 共有（#353）、LM タイポ訂正（#326）。
 
-### upstream 追従計画
+2026-09-02 に試した `git rebase upstream/main` は 6 コミット目（`GGML_BACKEND_DL`）で `ZenzContext.swift` の 3 箇所（`WinSDK` import と `Darwin` import、`cpuBackendLoaded` ブロックと upstream の `inferenceThreadCount`、`reset_context` → `resetContext` 改名）が衝突した。コミット単位の解決は割に合わないため、**upstream main の上に Windows パッチを移植し直す**方式にする。
 
-追従を予定（時期未定の別タスク）。fork は Swift ソースを触っていないため衝突は `Package.swift` / `.gitignore` / `Sources/llama.cpp` 程度に限られる。主な恩恵: Zenzai 右文脈対応 (#340)、zenz 入力予測 (#320/#322)、LM タイポ訂正 (#326)、新辞書 (#339)、学習更新クラッシュ修正 (#290)、予測キャッシュ修正 (#333)。
+チェックリスト:
 
-追従時チェックリスト:
-
-- [ ] **破壊的変更**: `custom(URL)` API 廃止 → `tableName(String)` 統一 (#298) が swift-engine 側の呼び出しに影響しないか
-- [ ] 新辞書フォーマット (#339): 辞書 submodule を `1fee663` → `4d41852` 以降へ更新し動作確認
-- [ ] Zenz リファクタリング後 (#325) のコードと vendored llama.cpp ヘッダ/DLL 世代の整合（upstream は b4846 前提）
+- [ ] `custom(URL)` → `tableName(String)`（#298）が swift-engine 側の呼び出しに影響しないか
+- [ ] 新辞書フォーマット（#339）: 辞書 submodule を v3.0.1 → v3.1.0-beta.15 へ、絵文字辞書を v0.2 → v0.3 へ更新して動作確認
+- [ ] Zenz リファクタ後（#325）のコードへ Windows の DLL 明示ロードと GPU オプトインを移植
+- [ ] vendored `llama.h` の重複を `include/` 側に一本化し、`llama.pc` の includedir を合わせる
 - [ ] subtree pull 後に `lib/windows` の DLL が復活していないか確認
+- [ ] fork と subtree の差分が 0 であることを `git diff <fork tip> HEAD:src/AzooKeyKanaKanjiConverter` で確認
 
-## 3. swift-tokenizers subtree（windows-swift621-patch）→ 廃止済み（2026-06-11 移行完了）
+## 3. swift-tokenizers / swift-huggingface（fork 廃止済み、2026-06-11）
 
-**決定・実施（2026-06-11）: fork / subtree を廃止し、upstream `huggingface/swift-transformers` 最新版へ移行した。**
+`src/swift-tokenizers/` subtree は廃止し、upstream `huggingface/swift-transformers` 系を SwiftPM のリモート依存で使う（[ADR-0002](adr/0002-retire-swift-tokenizers-fork.md)）。
 
-移行後の構成:
+- AzooKey の Package.swift → `unok/swift-tokenizers` の `windows-upstream-patch` ブランチ（upstream main `50843f9`（2026-05-19）+ 2 コミット: fnmatch シム、依存差し替え）
+- その依存 → `unok/swift-huggingface` の `windows-patch` ブランチ（v0.9.0 + 1 コミット: FileLock スタブ / fnmatch シム / cachesDirectory シム、約 70 行）
+- 旧ブランチ `windows-swift621-patch` は履歴として fork に残置
 
-- `src/swift-tokenizers/` subtree は削除済み
-- AzooKey の Package.swift → `unok/swift-tokenizers` の **`windows-upstream-patch`** ブランチ（upstream main `50843f9` + 2コミット: fnmatchシム + 依存差し替え）
-- swift-transformers の依存 → `unok/swift-huggingface` の **`windows-patch`** ブランチ（v0.9.0 + 1コミット: FileLockスタブ / fnmatchシム / cachesDirectoryシム）
-- 旧ブランチ `windows-swift621-patch` は履歴として fork に残置（削除しない）
-- 副作用: 依存解決で swift-collections が 1.3.0→1.6.0 に上がり、`DictionaryBuilder.swift` の `import Collections` を `import OrderedCollections` に修正（upstream azooKey/main と同一の修正のため将来の追従で収束）
-- 検証: `swift build -c release --arch x86_64` で azookey-engine.dll 生成を確認済み
-
-根拠（Windows 実機での upstream 最新 `50843f9` ビルド検証結果）:
-
-- fork の主因だった Swift 6.2.1 コンパイラクラッシュ（Trie.swift の SIL エラー）は**解消済み**（再現せず）
-- 残るブロッカーは本体ではなく依存の **swift-huggingface v0.9.0 側に4箇所**（POSIX 専用 `FileLock.swift`、`fnmatch` ×3、`URL.cachesDirectory`）+ 本体 `HubApi.swift` の `fnmatch` 1箇所。計約70行のパッチで**フルビルド成功を確認済み**
-- myime が使う API（`HubApi.shared`, `configuration(fileURL:)`, `AutoTokenizer.from(tokenizerConfig:tokenizerData:)`, `encode`/`decode`/`bosTokenId`/`eosTokenId`）は**新版にすべて健在、利用側コード変更不要**
-- myime の利用経路（ローカルファイル読み込み）は FileLock を通らないため、FileLock はスタブで実用上問題なし
-
-移行手順（別タスク）:
-
-1. swift-huggingface への Windows パッチ（~70行: FileLock スタブまたは LockFileEx 実装、fnmatch シム、cachesDirectory 代替）を用意 — fork または SwiftPM 上の参照差し替え
-2. AzooKey subtree の `Package.swift` をローカルパス `../swift-tokenizers` から upstream 参照へ変更
-3. `src/swift-tokenizers/` subtree を削除
-4. 並行して `huggingface/swift-huggingface` へ Windows 対応 PR を検討（採用されれば完全 fork レス化）
-
-移行完了までは現 fork を凍結のまま使用する（追加パッチは入れない）。
+Windows で必要なパッチは swift-huggingface 側の 4 箇所と本体 `HubApi.swift` の 1 箇所に限られ、myime が使う API（`HubApi.shared`、`AutoTokenizer.from(tokenizerConfig:tokenizerData:)` 等）は upstream 最新でも変更なし。#50 で両 fork を upstream 先端へ rebase し、`huggingface/swift-huggingface` への Windows 対応 PR を検討する。
 
 ## 4. 関連する未 push / 未整理事項
 
-- AzooKey subtree: ローカルコミット `22cde1055`（DLL 削除）が fork 未 push（§2 参照）
-- mozc fork: 直近のローカル開発と CI の整合は `build-x64.bat` 系スクリプトの master 反映で解消済み（2026-06-11 pull）
+2026-09-02 時点で未 push のローカルコミットはない。残る作業はすべて Issue #56 配下の #49〜#54 に載っている。
