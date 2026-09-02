@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -32,7 +32,7 @@ jobs:
         run: cat scripts/vulkan-sdk-version.env >> "$GITHUB_ENV"
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -46,7 +46,7 @@ jobs:
 
       - name: Install Bazelisk
         run: |
-          choco install bazelisk -y
+          choco install bazelisk --version 1.29.0 -y
           bazelisk version
 
       # NOTE: PR ではキャッシュを「復元のみ」にする（actions/cache/restore）。
@@ -55,7 +55,7 @@ jobs:
       # ビルドが 40分 → 1時間20分超に悪化した（2026-08-03 実測）。保存は master の
       # Build x64 だけが行い、PR は master の最新キャッシュを読むだけにする。
       - name: Restore Bazel repository cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             .bazel-repo-cache
@@ -69,7 +69,7 @@ jobs:
       # ため（--action_env ではない）、刻印参照以外のアクションキーは PR と一致し、
       # C++ コンパイル本体のキャッシュがそのまま使える
       - name: Restore Bazel disk cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .bazel-disk-cache
           key: bazel-disk-windows-x64-${{ github.sha }}
@@ -77,7 +77,7 @@ jobs:
             bazel-disk-windows-x64-
 
       - name: Restore Swift Package Manager cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: src/swift-engine/.build
           key: swift-pm-windows-x64-${{ hashFiles('src/swift-engine/Package.swift', 'src/swift-engine/Package.resolved') }}
@@ -86,7 +86,7 @@ jobs:
 
       - name: Restore llama.cpp build cache
         id: cache-llama
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: llama.cpp-build
           key: llama-cpp-windows-x64-dl-vulkan-${{ env.LLAMA_CPP_VERSION }}

@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -33,7 +33,7 @@ jobs:
         run: cat scripts/vulkan-sdk-version.env >> "$GITHUB_ENV"
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -47,7 +47,7 @@ jobs:
 
       - name: Install Bazelisk
         run: |
-          choco install bazelisk -y
+          choco install bazelisk --version 1.29.0 -y
           bazelisk version
 
       - name: Install Vulkan SDK
@@ -56,7 +56,7 @@ jobs:
 
       - name: Cache Qt build
         id: cache-qt
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: mozc/src/third_party/qt
           key: qt-windows-x64-v2-${{ hashFiles('mozc/src/build_tools/build_qt.py') }}
@@ -66,7 +66,7 @@ jobs:
       # (毎回外部依存をフル fetch していた)。--repository_cache を明示パスに固定し、
       # それと bazelisk のダウンロードキャッシュを保存する。
       - name: Cache Bazel repository
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .bazel-repo-cache
@@ -81,7 +81,7 @@ jobs:
       # かつての --action_env=MOZC_VERSION 方式は全アクションのキャッシュキーを汚染し、
       # 同一ソースの再ビルドでも 37分かかっていた（2026-08-03 実測・ヒット率 0%）
       - name: Cache Bazel disk cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .bazel-disk-cache
           key: bazel-disk-windows-x64-${{ github.sha }}
@@ -89,7 +89,7 @@ jobs:
             bazel-disk-windows-x64-
 
       - name: Cache Swift Package Manager
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: src/swift-engine/.build
           key: swift-pm-windows-x64-${{ hashFiles('src/swift-engine/Package.swift', 'src/swift-engine/Package.resolved') }}
@@ -98,7 +98,7 @@ jobs:
 
       - name: Cache llama.cpp build
         id: cache-llama
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: llama.cpp-build
           key: llama-cpp-windows-x64-dl-vulkan-${{ env.LLAMA_CPP_VERSION }}
@@ -203,14 +203,14 @@ jobs:
 
       # Upload artifacts
       - name: Upload MSI
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Mozc_x64
           path: Mozc_x64.msi
           retention-days: 30
 
       - name: Upload DLLs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: azookey-dlls-x64
           path: build/x64/release/
