@@ -1,6 +1,8 @@
 """Check that installer DLL entries match the canonical PowerShell lists.
 
 Targets copy-*.ps1 lists and installer_oss_64bit.wxs; build-*.bat is excluded because build-x64.bat consumes -ListOnly.
+Missing inputs (e.g. the mozc submodule is not initialized) exit 2 with a
+remediation hint instead of a generic OSError.
 Usage: python scripts/ci/check-dll-lists.py
 """
 
@@ -73,7 +75,21 @@ def read_installer_names() -> set[str]:
     return names
 
 
+def check_inputs_exist() -> bool:
+    """Report missing input files up front so CI logs say how to fix them."""
+    missing = [path for path in (*LIST_SCRIPTS, WXS_PATH) if not path.is_file()]
+    for path in missing:
+        print(f"ERROR: missing input: {path.relative_to(ROOT).as_posix()}")
+    if WXS_PATH in missing:
+        print('hint: run "git submodule update --init --recursive" '
+              "(mozc submodule is not initialized)")
+    return not missing
+
+
 def main() -> int:
+    if not check_inputs_exist():
+        return 2
+
     powershell = find_powershell()
     if powershell is None:
         print("ERROR: neither pwsh nor powershell was found")
