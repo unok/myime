@@ -275,6 +275,24 @@ for /f "delims=" %%a in ('git submodule status 2^>nul') do (
 popd
 
 echo.
+:: ==============================================
+:: AzooKey Engine Status
+:: ==============================================
+echo [AzooKey Engine Status]
+echo ----------------------------------------------
+
+for %%v in (AzooKeyEngineState AzooKeyEngineError AzooKeyLearningActive AzooKeyLearningDisabledReason ZenzaiActive) do (
+    reg query "HKCU\Software\Mozc" /v %%v >nul 2>&1
+    if !ERRORLEVEL! NEQ 0 (
+        echo   %%v: ^(not set^)
+    ) else (
+        set "REG_VALUE="
+        for /f "tokens=1,2,*" %%a in ('reg query "HKCU\Software\Mozc" /v %%v 2^>nul ^| findstr /I /C:"%%v"') do set "REG_VALUE=%%c"
+        echo   %%v: !REG_VALUE!
+    )
+)
+
+echo.
 echo ==============================================
 echo Done.
 echo ==============================================
