@@ -14,6 +14,8 @@ nonisolated(unsafe) private var composingText = ComposingText()
 nonisolated(unsafe) private var currentCandidates: [Candidate] = []
 nonisolated(unsafe) private var currentTypoCandidates: [TypoCandidate] = []
 nonisolated(unsafe) private var config = EngineConfig()
+nonisolated(unsafe) private var learningDisabledReason: String?
+nonisolated(unsafe) private var initializeError: String?
 
 /// TypoCorrectionPass など他ファイルからの読み取り用スナップショット。
 /// 書き込みはこのファイルの FFI セッター経由に限定する(engineLock 保持下)
@@ -232,6 +234,7 @@ public func initialize(_ dictionaryPath: UnsafePointer<CChar>?, _ memoryPath: Un
     //  新しい引数の検証失敗により誤って「失敗」扱いになるのを防ぐ)
     if converter != nil {
         initCount += 1
+        initializeError = nil
         return 1
     }
 
@@ -241,17 +244,29 @@ public func initialize(_ dictionaryPath: UnsafePointer<CChar>?, _ memoryPath: Un
     if let memPath = memoryPath {
         config.memoryPath = String(cString: memPath)
     }
+    learningDisabledReason = nil
 
     // カスタム辞書パス指定時は存在を検証して失敗を呼び出し元に伝える
     if !config.dictionaryPath.isEmpty,
        !FileManager.default.fileExists(atPath: config.dictionaryPath) {
+        initializeError = "dictionary path not found: \(config.dictionaryPath)"
         return 0
     }
     // 学習ディレクトリが指定されているのに作成できない場合は学習なしで続行
     if !config.memoryPath.isEmpty {
-        try? FileManager.default.createDirectory(
-            atPath: config.memoryPath, withIntermediateDirectories: true)
-        if !FileManager.default.fileExists(atPath: config.memoryPath) {
+        let requestedMemoryPath = config.memoryPath
+        do {
+            try FileManager.default.createDirectory(
+                atPath: requestedMemoryPath, withIntermediateDirectories: true)
+            var isDirectory: ObjCBool = false
+            let memoryDirectoryExists = FileManager.default.fileExists(
+                atPath: requestedMemoryPath, isDirectory: &isDirectory)
+            if !memoryDirectoryExists || !isDirectory.boolValue {
+                learningDisabledReason = "memory directory unavailable: \(requestedMemoryPath)"
+                config.memoryPath = ""
+            }
+        } catch {
+            learningDisabledReason = "memory directory unavailable: \(requestedMemoryPath)"
             config.memoryPath = ""
         }
     }
@@ -265,14 +280,19 @@ public func initialize(_ dictionaryPath: UnsafePointer<CChar>?, _ memoryPath: Un
     }
     converter = KanaKanjiConverter(dicdataStore: dicdataStore)
     typoConverter = KanaKanjiConverter(dicdataStore: dicdataStore)
+    guard converter != nil else {
+        typoConverter = nil
+        initializeError = "converter creation failed"
+        return 0
+    }
     composingText = ComposingText()
     currentCandidates = []
     currentTypoCandidates = []
 
     initCount += 1
-    let initialized = converter != nil
+    initializeError = nil
     scheduleZenzaiWarmUpIfNeeded()
-    return initialized ? 1 : 0
+    return 1
 }
 
 /// Schedule GPU warm-up once after all Zenzai settings have reached Swift.
@@ -524,8 +544,15 @@ public func getZenzaiStatus() -> UnsafePointer<CChar>? {
         "enabled": config.zenzaiEnabled,
         "useGpu": config.zenzaiUseGpu,
         "weightPath": config.zenzaiWeightPath,
-        "inferenceLimit": config.zenzaiInferenceLimit
+        "inferenceLimit": config.zenzaiInferenceLimit,
+        "learningActive": !config.memoryPath.isEmpty
     ]
+    if let learningDisabledReason {
+        status["learningDisabledReason"] = learningDisabledReason
+    }
+    if let initializeError {
+        status["initializeError"] = initializeError
+    }
 
     // Check if Zenzai is actually active
     if config.zenzaiEnabled && !config.zenzaiWeightPath.isEmpty {

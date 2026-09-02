@@ -51,7 +51,7 @@ Mozc（C++ / TSF）をUIフレームワークとし、かな漢字変換を Azoo
 | | `SelectCandidate(index)` | 候補確定（学習有効時は履歴に反映） |
 | Zenzai制御 | `SetZenzaiEnabled(bool)` / `SetZenzaiInferenceLimit(n)` / `SetZenzaiWeightPath(path)` | Zenzai 設定 |
 | | `SetZenzaiUseGpu(bool)` | 推論バックエンド切替（false=CPU（既定）/ true=Vulkan GPU）。ggml の動的バックエンドロード（`GGML_BACKEND_DL`）で実現し、GPU 指定時のみ ggml-vulkan モジュールをロードする |
-| | `GetZenzaiStatus()` | `{enabled, weightPath, inferenceLimit, modelExists, active}` の JSON |
+| | `GetZenzaiStatus()` | `{enabled, useGpu, weightPath, inferenceLimit, modelExists, active, learningActive, learningDisabledReason?, initializeError?}` の JSON |
 | タイポ補正 | `SetTypoCorrectionEnabled(bool)` / `SetTypoCorrectionBudget(n)` / `SetTypoCorrectionUseAi(bool)` | タイポ補正2パスの有効化・変換予算・AI（Zenzai）による候補評価。Mozc 側は GetProcAddress で任意取得（旧 DLL でも起動可） |
 | ユーザー辞書 | `SetUserDictionary(json: UnsafePointer<CChar>?) -> Int32` | Mozc の全ユーザー辞書を UTF-8 JSON で受け取り、メモリ上の動的ユーザー辞書を置換する。成功=1/失敗=0 |
 | メモリ | `FreeString(ptr)` | 戻り値文字列の解放 |
