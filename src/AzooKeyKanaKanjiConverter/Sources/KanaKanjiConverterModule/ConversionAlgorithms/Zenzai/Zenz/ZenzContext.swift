@@ -277,17 +277,41 @@ private final class SharedZenzModel {
         ZenzBackend.initializeIfNeeded()
         var modelParams = llama_model_default_params()
         modelParams.use_mmap = true
-        var effectiveUseGpu = false
         #if Zenzai && os(Windows)
-        effectiveUseGpu = useGpu
+        // CPU-only ロード。`n_gpu_layers = 0` だけでは ggml-vulkan.dll がロード済みの
+        // プロセスで Vulkan デバイスも列挙されるため、NULL 終端の CPU-only デバイス
+        // リストを渡す（ZenzaiCPU 分岐と同じ方式）。buffer.baseAddress はクロージャ外で
+        // 無効になるので、代入とロードをクロージャ内に閉じ込める
+        func loadCpuOnly(_ params: inout llama_model_params) -> OpaquePointer? {
+            params.n_gpu_layers = 0
+            params.split_mode = LLAMA_SPLIT_MODE_NONE
+            guard let cpuDevice = ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_CPU) else {
+                debug("Could not find CPU backend; trying without an explicit device list")
+                return llama_model_load_from_file(path, params)
+            }
+            var devices = [cpuDevice, nil]
+            return devices.withUnsafeMutableBufferPointer { buffer in
+                params.devices = buffer.baseAddress
+                return llama_model_load_from_file(path, params)
+            }
+        }
+        var effectiveUseGpu = useGpu
+        var loadedModel: OpaquePointer?
         if effectiveUseGpu {
             modelParams.n_gpu_layers = 999
+            loadedModel = llama_model_load_from_file(path, modelParams)
         } else {
-            modelParams.n_gpu_layers = 0
-            modelParams.split_mode = LLAMA_SPLIT_MODE_NONE
+            loadedModel = loadCpuOnly(&modelParams)
         }
-        #endif
-        #if ZenzaiCPU
+        if loadedModel == nil && effectiveUseGpu {
+            debug("Could not load model with Vulkan; falling back to CPU")
+            effectiveUseGpu = false
+            modelParams = llama_model_default_params()
+            modelParams.use_mmap = true
+            loadedModel = loadCpuOnly(&modelParams)
+        }
+        #elseif ZenzaiCPU
+        let effectiveUseGpu = false
         modelParams.n_gpu_layers = 0
         modelParams.split_mode = LLAMA_SPLIT_MODE_NONE
         guard let cpuDevice = ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_CPU) else {
@@ -297,23 +321,13 @@ private final class SharedZenzModel {
         // NULL終端のCPU-onlyデバイスリストを渡す。`n_gpu_layers = 0`だけでは
         // llama.cppがMetalデバイスも列挙し、context生成時に初期化してしまう。
         var devices = [cpuDevice, nil]
-        var loadedModel = devices.withUnsafeMutableBufferPointer { buffer in
+        let loadedModel = devices.withUnsafeMutableBufferPointer { buffer in
             modelParams.devices = buffer.baseAddress
             return llama_model_load_from_file(path, modelParams)
         }
         #else
-        var loadedModel = llama_model_load_from_file(path, modelParams)
-        #endif
-        #if Zenzai && os(Windows)
-        if loadedModel == nil && effectiveUseGpu {
-            debug("Could not load model with Vulkan; falling back to CPU")
-            effectiveUseGpu = false
-            modelParams = llama_model_default_params()
-            modelParams.use_mmap = true
-            modelParams.n_gpu_layers = 0
-            modelParams.split_mode = LLAMA_SPLIT_MODE_NONE
-            loadedModel = llama_model_load_from_file(path, modelParams)
-        }
+        let effectiveUseGpu = false
+        let loadedModel = llama_model_load_from_file(path, modelParams)
         #endif
         guard let model = loadedModel else {
             debug("Could not load model at \(path)")
@@ -369,7 +383,6 @@ final class ZenzContext {
     private let sharedModel: SharedZenzModel
     private var context: OpaquePointer
     private var batch: llama_batch
-    private let useGpu: Bool
     private var prevInputBySeq: [llama_seq_id: [llama_token]] = [:]
     private var prevPromptBySeq: [llama_seq_id: String] = [:]
 
@@ -381,7 +394,6 @@ final class ZenzContext {
         self.sharedModel = sharedModel
         self.context = context
         self.batch = llama_batch_init(512, 0, 1)
-        self.useGpu = sharedModel.useGpu
     }
 
     deinit {
@@ -502,20 +514,27 @@ final class ZenzContext {
     // ロックや可変フラグなしでプロセス内一回のロードを保証できる
     private static let cpuBackendLoaded: Bool = loadGgmlBackend(named: "ggml-cpu.dll")
     private static let vulkanBackendLoaded: Bool = loadGgmlBackend(named: "ggml-vulkan.dll")
+
+    private static func ensureBackendsLoaded() {
+        // この参照が static let の遅延初期化＝DLL ロードのトリガー。削除禁止。
+        _ = Self.cpuBackendLoaded
+    }
     #endif
 
     static func createContext(path: String, useGpu: Bool = false) throws -> ZenzContext {
         #if (Zenzai || ZenzaiCPU) && os(Windows)
+        Self.ensureBackendsLoaded()
         if !Self.cpuBackendLoaded {
             debug("CPU backend is not loaded; Zenzai model load will likely fail")
         }
         #endif
-        var effectiveUseGpu = false
         #if Zenzai && os(Windows)
-        effectiveUseGpu = useGpu && Self.vulkanBackendLoaded
+        let effectiveUseGpu = useGpu && Self.vulkanBackendLoaded
         if useGpu && !effectiveUseGpu {
             debug("Vulkan backend is not loaded; falling back to CPU")
         }
+        #else
+        let effectiveUseGpu = false
         #endif
         var sharedModel = try SharedZenzModelCache.shared.model(path: path, useGpu: effectiveUseGpu)
         var params = ctx_params
@@ -541,6 +560,7 @@ final class ZenzContext {
 
     func resetContext() throws {
         #if (Zenzai || ZenzaiCPU) && os(Windows)
+        Self.ensureBackendsLoaded()
         if !Self.cpuBackendLoaded {
             debug("CPU backend is not loaded; Zenzai context reset will likely fail")
         }
