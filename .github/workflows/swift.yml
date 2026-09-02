@@ -12,13 +12,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-latest]
-        swift-version: ["6.1"]
+        # Swift 6.1.3 cannot import the Xcode 26 SDK currently selected by macos-latest.
+        # macos-15 uses Xcode 16.4, whose SDK is compatible with this toolchain.
+        os: [macos-15]
+        # setup-swift on macOS currently rejects a 6.1 request when the runner resolves to 6.1.3.
+        swift-version: ["6.1.3"]
     steps:
-      - uses: ensan-hcl/setup-swift@swift-6.1.0
+      - uses: swift-actions/setup-swift@v3
         with:
           swift-version: ${{ matrix.swift-version }}
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
       - name: Build
@@ -30,13 +33,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-24.04]
         swift-version: ["6.1"]
     steps:
-      - uses: ensan-hcl/setup-swift@swift-6.1.0
+      - uses: compnerd/gha-setup-swift@main
         with:
-          swift-version: ${{ matrix.swift-version }}
-      - uses: actions/checkout@v5
+          branch: swift-${{ matrix.swift-version }}-release
+          tag: ${{ matrix.swift-version }}-RELEASE
+      - uses: actions/checkout@v6
         with:
           submodules: true
       - name: Download pre-built llama.cpp binaries
@@ -67,7 +71,7 @@ jobs:
         with:
           branch: ${{ matrix.swift-version.branch }}
           tag: ${{ matrix.swift-version.tag }}
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
       - name: Download pre-built llama.cpp binaries
@@ -116,10 +120,11 @@ jobs:
 
       - name: Setup Swift release Android SDK
         run: |
-          ${TOOLCHAIN}/bin/swift sdk install https://github.com/finagolfin/swift-android-sdk/releases/download/${{ matrix.swift-version.version }}/swift-${{ matrix.swift-version.version }}-RELEASE-android-${{ matrix.swift-version.android }}-0.1.artifactbundle.tar.gz --checksum ${{ matrix.swift-version.checksum }}
+          # The SDK bundle configures its own NDK; the runner-provided ANDROID_NDK_ROOT breaks that setup.
+          env -u ANDROID_NDK_ROOT ${TOOLCHAIN}/bin/swift sdk install https://github.com/finagolfin/swift-android-sdk/releases/download/${{ matrix.swift-version.version }}/swift-${{ matrix.swift-version.version }}-RELEASE-android-${{ matrix.swift-version.android }}-0.1.artifactbundle.tar.gz --checksum ${{ matrix.swift-version.checksum }}
           ${TOOLCHAIN}/bin/swift sdk list
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           path: AzooKeyKanaKanjiConverter
           submodules: true
@@ -130,8 +135,8 @@ jobs:
           if ${{ matrix.arch == 'armv7' }}; then
               ARCH_TARGET="armv7-unknown-linux-androideabi${{ matrix.swift-version.android }}"
           fi
-          ${TOOLCHAIN}/bin/swift sdk configure --show-configuration swift-${{ matrix.swift-version.version }}-RELEASE-android-${{ matrix.swift-version.android }}-0.1 $ARCH_TARGET
-          ${TOOLCHAIN}/bin/swift build --build-tests --swift-sdk $ARCH_TARGET
+          env -u ANDROID_NDK_ROOT ${TOOLCHAIN}/bin/swift sdk configure --show-configuration swift-${{ matrix.swift-version.version }}-RELEASE-android-${{ matrix.swift-version.android }}-0.1 $ARCH_TARGET
+          env -u ANDROID_NDK_ROOT ${TOOLCHAIN}/bin/swift build --build-tests --swift-sdk $ARCH_TARGET
       - name: Get cached Termux app
         if: ${{ matrix.arch == 'x86_64' }}
         id: cache-termux
@@ -152,16 +157,19 @@ jobs:
           adb push pack /data/local/tmp
           EOF
 
-          mkdir -p pack/lib/swift/android
+          mkdir -p pack
           TARGET="x86_64-unknown-linux-android${{ matrix.swift-version.android }}"
 
           cp AzooKeyKanaKanjiConverter/.build/$TARGET/debug/AzooKeyKanaKanjiConverterPackageTests.xctest pack
-          echo 'adb shell /data/local/tmp/pack/AzooKeyKanaKanjiConverterPackageTests.xctest' >> ~/test-toolchain.sh
+          echo 'adb shell "cd /data/local/tmp/pack && export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:/data/local/tmp/pack && ./AzooKeyKanaKanjiConverterPackageTests.xctest"' >> ~/test-toolchain.sh
 
           cp -r AzooKeyKanaKanjiConverter/.build/$TARGET/debug/AzooKeyKanaKanjiConverter_KanaKanjiConverterModuleTests.resources pack
           cp -r AzooKeyKanaKanjiConverter/.build/$TARGET/debug/AzooKeyKanaKanjiConverter_KanaKanjiConverterModuleWithDefaultDictionary.resources pack
+          cp ~/.config/swiftpm/swift-sdks/swift-${{ matrix.swift-version.version }}-RELEASE-android-${{ matrix.swift-version.android }}-*.artifactbundle/swift*sdk/android*sysroot/usr/lib/$(echo ${{ matrix.arch }} | sed "s/v7//")-linux-android/lib*so pack
           cp ~/.config/swiftpm/swift-sdks/swift-${{ matrix.swift-version.version }}-RELEASE-android-${{ matrix.swift-version.android }}-*.artifactbundle/swift*sdk/android*sysroot/usr/lib/$(echo ${{ matrix.arch }} | sed "s/v7//")-linux-android*/${{ matrix.swift-version.android }}/lib*so pack
           rm pack/lib{c,dl,log,m}.so
+          # Keep the system libc++.so; only bundle the Swift/SDK-shipped shared libraries.
+          rm -f pack/libc++.so
 
           chmod +x ~/test-toolchain.sh
 

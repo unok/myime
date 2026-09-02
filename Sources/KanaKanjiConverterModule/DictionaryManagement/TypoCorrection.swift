@@ -188,8 +188,10 @@ struct TypoCorrectionGenerator: Sendable {
             if penalty >= maxPenalty {
                 let element = inputs[self.range.leftIndex + count]
                 let correct = switch element.piece {
-                case let .character(c), let .key(intention: c?, modifiers: _):
+                case let .character(c):
                     ComposingText.InputElement(piece: .character(c.toKatakana()), inputStyle: element.inputStyle)
+                case let .key(intention: cint, input: cinp, modifiers: _):
+                    ComposingText.InputElement(piece: .character((cint ?? cinp).toKatakana()), inputStyle: element.inputStyle)
                 case _:
                     element
                 }
@@ -239,8 +241,10 @@ struct TypoCorrectionGenerator: Sendable {
         }
         lazy var key = elements.reduce(into: "") {
             switch $1.piece {
-            case let .character(c), .key(intention: let c?, modifiers: _):
+            case let .character(c):
                 $0.append(c.toKatakana())
+            case let .key(intention: cint, input: cinp, modifiers: _):
+                $0.append((cint ?? cinp).toKatakana())
             case _:
                 break
             }

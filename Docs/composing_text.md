@@ -75,10 +75,12 @@ PCキーボードからの入力を、キーと修飾キーの組み合わせと
 カスタム入力テーブルでは `{shift 0}` と `{shift _}` の2トークンのみを特別扱いでサポートしており、それぞれ `.key(intention: "0", [.shift])`、`.key(intention: "_", [.shift])` に対応します。`ComposingText` に投入する場合は、以下のように `InputElement(piece: …, inputStyle: …)` を使います。
 
 ```swift
+let table = try InputStyleManager.loadTable(from: url)
+InputStyleManager.registerInputStyle(table: table, for: "custom_table")
+
 var c = ComposingText()
-let url = /* カスタムテーブルのURL */
 c.insertAtCursorPosition([
-    .init(piece: .key(intention: "0", modifiers: [.shift]), inputStyle: .mapped(id: .custom(url)))
+    .init(piece: .key(intention: "0", modifiers: [.shift]), inputStyle: .mapped(id: .tableName("custom_table")))
 ])
 ```
 

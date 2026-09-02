@@ -1,5 +1,7 @@
+import OrderedCollections
+
 extension InputTables {
-    private static let defaultRomanToKanaMap: [String: String] = [
+    private static let defaultRomanToKanaMap: OrderedDictionary<String, String> = [
         "a": "あ",
         "xa": "ぁ",
         "la": "ぁ",

@@ -5,5 +5,5 @@ public enum InputPiece: Sendable, Equatable, Hashable {
 
     case character(Character)
     case compositionSeparator
-    case key(intention: Character?, modifiers: Set<Modifier>)
+    case key(intention: Character?, input: Character, modifiers: Set<Modifier>)
 }
