@@ -76,14 +76,22 @@ swift test -c release
 
 bazel test はテスト実行体を runfiles ツリーから実行するため、`bazel-bin` に DLL を置いても `azookey-engine.dll` は見つからない。`--test_env=MYIME_HERMETIC_TEST=1` で `converter/engine_config.h` の hermetic test-mode を明示的に有効にし（レジストリと `%LOCALAPPDATA%` のモデル探索を無視、Zenzai は `MYIME_AZOOKEY_ZENZAI_WEIGHT`（GGUF の絶対パス）を渡した時だけ有効、学習データは `TEST_TMPDIR` 配下、レジストリへの書き戻しなし）、`--test_env=MYIME_AZOOKEY_DLL_DIR`（絶対パス。hermetic test-mode の時だけ有効。`converter/azookey_immutable_converter.cc` の `LoadDll` 参照）で `build\x64\release` を指す。判定キーを `TEST_TMPDIR` にしないのは、シェルの環境変数が TIP や mozc_server、設定ダイアログへ継承されて本番で誤発動するのを防ぐため。
 
+CI（Build x64）と同じ、全件通る組み合わせ:
+
 ```cmd
 cd mozc\src
-bazelisk test --config=oss_windows --spawn_strategy=local --test_env=MYIME_HERMETIC_TEST=1 --test_env=MYIME_AZOOKEY_DLL_DIR=%CD%\..\..\build\x64\release //session:session_test //session:session_handler_scenario_test
+bazelisk test --config=oss_windows --spawn_strategy=local --test_env=MYIME_HERMETIC_TEST=1 --test_env=MYIME_AZOOKEY_DLL_DIR=%CD%\..\..\build\x64\release //converter:azookey_candidate_parser_test //converter:azookey_user_dictionary_test //session:session_handler_test //session:session_test
+```
+
+upstream のシナリオテストは任意実行（現状は失敗が残る。下記）:
+
+```cmd
+bazelisk test --config=oss_windows --spawn_strategy=local --test_env=MYIME_HERMETIC_TEST=1 --test_env=MYIME_AZOOKEY_DLL_DIR=%CD%\..\..\build\x64\release //session:session_handler_scenario_test
 ```
 
 Git Bash から実行する場合は `MSYS_NO_PATHCONV=1` を付けないと `//session:` が `/session:` に書き換わる。
 
-2026-09-02 時点の実測: `session_test` は全件通過、`session_handler_scenario_test` は 66 合格 / 30 失敗（15 シナリオ）。失敗はすべて Mozc の辞書・文節分割を前提にした期待値（`宗号する`、`東京タワー`、`中ノ` の 3 文節など）で、AzooKey エンジンでは成り立たない。扱いは #51 で決める。
+2026-09-02 時点の実測: `session_test` は全件通過、`session_handler_scenario_test` は 66 合格 / 30 失敗（15 シナリオ）。失敗はすべて Mozc の辞書・文節分割を前提にした期待値（`宗号する`、`東京タワー`、`中ノ` の 3 文節など）で、AzooKey エンジンでは成り立たない。除外リスト化・myime 版シナリオ・CI 外のどれにするかは #51 のコメントで判断待ち。
 
 ### ローカルの Qt を CI と同じ削減ビルドに揃える
 
