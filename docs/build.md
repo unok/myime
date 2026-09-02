@@ -72,6 +72,19 @@ swift test -c release
 
 タイポ補正・辞書登録のヘッドレス検証手順は [architecture.md](architecture.md) の各節を参照。
 
+### Mozc のテストをエンジン DLL 有りで走らせる
+
+bazel test はテスト実行体を runfiles ツリーから実行するため、`bazel-bin` に DLL を置いても `azookey-engine.dll` は見つからない。`--test_env=MYIME_HERMETIC_TEST=1` で `converter/engine_config.h` の hermetic test-mode を明示的に有効にし（レジストリと `%LOCALAPPDATA%` のモデル探索を無視、Zenzai は `MYIME_AZOOKEY_ZENZAI_WEIGHT`（GGUF の絶対パス）を渡した時だけ有効、学習データは `TEST_TMPDIR` 配下、レジストリへの書き戻しなし）、`--test_env=MYIME_AZOOKEY_DLL_DIR`（絶対パス。hermetic test-mode の時だけ有効。`converter/azookey_immutable_converter.cc` の `LoadDll` 参照）で `build\x64\release` を指す。判定キーを `TEST_TMPDIR` にしないのは、シェルの環境変数が TIP や mozc_server、設定ダイアログへ継承されて本番で誤発動するのを防ぐため。
+
+```cmd
+cd mozc\src
+bazelisk test --config=oss_windows --spawn_strategy=local --test_env=MYIME_HERMETIC_TEST=1 --test_env=MYIME_AZOOKEY_DLL_DIR=%CD%\..\..\build\x64\release //session:session_test //session:session_handler_scenario_test
+```
+
+Git Bash から実行する場合は `MSYS_NO_PATHCONV=1` を付けないと `//session:` が `/session:` に書き換わる。
+
+2026-09-02 時点の実測: `session_test` は全件通過、`session_handler_scenario_test` は 66 合格 / 30 失敗（15 シナリオ）。失敗はすべて Mozc の辞書・文節分割を前提にした期待値（`宗号する`、`東京タワー`、`中ノ` の 3 文節など）で、AzooKey エンジンでは成り立たない。扱いは #51 で決める。
+
 ### ローカルの Qt を CI と同じ削減ビルドに揃える
 
 既存の `mozc\src\third_party\qt` ジャンクション（`C:\Qt\6.8.0\msvc2022_64` 向け）を削除してから、CI（`.github/workflows/build-x64.yml`）と同じ順序で Qt ソースの取得 → 削減ビルド → 他の依存更新を実行する。版数は `scripts/ci/download-qt.ps1` の既定値（6.9.1）と `mozc/src/build_tools/update_deps.py` の定義が一致している必要がある。初回は時間がかかる。
@@ -100,8 +113,8 @@ git commit -m "Update mozc submodule"
 
 | ワークフロー | トリガー | 内容 |
 |---|---|---|
-| PR Tests | pull_request | Swift DLL ビルド + swift test + Bazel の主要ターゲットの build/test（MSI なし、実測 26〜37 分（2026-08）） |
-| Build x64 | master への push / 手動実行 | フル MSI ビルド（成果物 `Mozc_x64` をダウンロード可能）。テストは実行しない（#51 で対応予定） |
+| PR Tests | pull_request | Swift DLL ビルド + swift test + Bazel の主要ターゲット（`azookey_candidate_parser_test` を含む DLL 非依存テスト）の build/test（MSI なし、実測 26〜37 分（2026-08）） |
+| Build x64 | master への push / 手動実行 | フル MSI ビルド（成果物 `Mozc_x64` をダウンロード可能）。DLL ビルド後に swift test と Python 回帰テスト（`scripts/tests/typo_*.py`）、MSI ビルド後にエンジン DLL 有りの Mozc テスト（`session_test` / `session_handler_test` / `azookey_*_test`）を実行する（#51） |
 
 `**.md`・`docs/**` だけの変更ではどちらも走らない。キャッシュの保存は master（Build x64）だけが行い、PR は復元のみ。PR 側でも保存すると 1GB 超の bazel-disk キャッシュが PR ごとに積み上がり、上限 10GB の LRU で Qt / llama のキャッシュが追い出されて master のビルドが 40分 → 1時間20分超に悪化する（2026-08-03 実測）。
 

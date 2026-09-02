@@ -40,8 +40,8 @@ fork が追加した `SessionCommand::REQUEST_TYPO_SUGGESTION` と `Output.launc
 
 | 領域 | ファイル | 内容 |
 |---|---|---|
-| converter | `azookey_immutable_converter.cc/.h`（新規）、`azookey_user_dictionary.cc/.h`（新規） | AzooKey DLL のロードと JSON 候補の取り込み、タイポ候補の属性付与、Mozc ユーザー辞書の AzooKey へのプッシュ |
-| converter | `engine_config.h` | レジストリ読み取り（ZenzaiEnabled / ZenzaiUseGpu / TypoCorrectionEnabled / IdleResuggest / TypoCorrectionUseAi / パススルーキー）とモデルパス探索 |
+| converter | `azookey_immutable_converter.cc/.h`（新規）、`azookey_candidate_parser.cc/.h` + `_test.cc`（新規）、`azookey_user_dictionary.cc/.h`（新規） | AzooKey DLL のロード（bazel test 文脈では `MYIME_AZOOKEY_DLL_DIR` で配置先指定）、JSON 候補のパースとセグメント展開（DLL 非依存のライブラリとテスト）、Mozc ユーザー辞書の AzooKey へのプッシュ |
+| converter | `engine_config.h` | レジストリ読み取り（ZenzaiEnabled / ZenzaiUseGpu / TypoCorrectionEnabled / IdleResuggest / TypoCorrectionUseAi / パススルーキー）とモデルパス探索。`MYIME_HERMETIC_TEST=1` で hermetic test-mode（レジストリ・モデル探索を無視、学習データを `TEST_TMPDIR` へ、bazel test から `--test_env` で渡す） |
 | converter | `converter.cc` | AzooKey 時の `CompletePosIds` 早期 return、`Reload` でのユーザー辞書プッシュ |
 | engine | `engine.cc`、`engine_converter.cc`、`engine_converter_interface.h` | `NoOpImmutableConverter`、`ConversionPreferences.idle_resuggest`、辞書登録候補の確定抑止 |
 | protocol | `commands.proto` | `REQUEST_TYPO_SUGGESTION = 1000`、`Output.launch_tool_arg = 1000` |

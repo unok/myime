@@ -109,8 +109,9 @@ bazelisk build --config=oss_windows //win32/installer:installer_x64
 
 タイポ補正・アイドル再サジェストのヘッドレス検証は `session_handler_main` +
 `session_handler_tool` の `REQUEST_TYPO_SUGGESTION` コマンドで可能（docs/architecture.md 参照）。
-注意: Zenzai 有効環境では session_handler_main が終了時にハングし CPU を消費し続けるため、
-実行後は必ず `Stop-Process` すること。
+かつて session_handler_main が終了時にハングし CPU を消費し続けた問題は、静的デストラクタでの
+`FreeLibrary` を廃止して解消済み（2026-09-02、Zenzai の有無によらず発生していた）。
+bazel test で DLL 有りのテストを走らせる手順は docs/build.md「Mozc のテストをエンジン DLL 有りで走らせる」参照。
 
 ### UACインストーラ検出（解決済みの歴史的メモ）
 かつてローカルMSIビルドで、UACの「インストーラ検出」が `build_installer.exe`
