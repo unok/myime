@@ -142,8 +142,9 @@ func getOptions(allowLearning: Bool = true) -> ConvertRequestOptions {
     }
 
     return ConvertRequestOptions(
-        requireJapanesePrediction: true,
-        requireEnglishPrediction: false,
+        // upstream の PredictionMode 化（旧 Bool の true/false と同じ挙動: 日本語予測は候補に混ぜ、英語予測は生成しない）
+        requireJapanesePrediction: .autoMix,
+        requireEnglishPrediction: .disabled,
         keyboardLanguage: .ja_JP,
         learningType: learningEnabled ? .inputAndOutput : .nothing,
         memoryDirectoryURL: memoryURL ?? URL(fileURLWithPath: NSTemporaryDirectory()),

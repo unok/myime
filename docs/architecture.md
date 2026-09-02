@@ -127,7 +127,7 @@ CI（`.github/workflows/build-x64.yml`）は llama.cpp をソースからビル�
 
 - **生成器**（`TypoCorrectionReadingGenerator.swift`）: 読みから補正読み候補を生成する。パターンはローマ字往復方式（読み→ローマ字逆変換→編集→かな再変換）を基本に、母音補完・ん/っ挿入・隣接キー置換・転置など。カテゴリはラウンドロビンで採用し、往復自己検証（324読み）を通過したテーブルのみ使う
 - **2系統の探索**: 読みが valid なかなになったタイポ（がこう→学校）は総当たり生成+スコア選別。アルファベットが残ったタイポ（ありがとうございまs）は残留位置が誤り位置を指すため局所修復し、読み長制限なし
-- **選別**（`AzookeyEngine.swift` の `makeTypoCandidates`）: 別 KanaKanjiConverter インスタンス（DicdataStore 共有・学習なし・Zenzai off）で変換し、読み全体カバー・スクリプト変種除外・1文字あたりの絶対バー・1パス目最良候補との1モーラあたり比較で絞る。実測校正値はコード内コメント参照
+- **選別**（`AzookeyEngine.swift` の `makeTypoCandidates`）: 別 KanaKanjiConverter インスタンス（DicdataStore 共有・学習なし・Zenzai off）で変換し、読み全体カバー・スクリプト変種除外・1文字あたりの絶対バー・1パス目最良候補（入力より長い予測候補は value のスケールが異なるため除外）との1モーラあたり比較で絞る。実測校正値はコード内コメント参照。環境変数 `AZOOKEY_TYPO_DEBUG` を設定すると候補ごとの value を stderr に出す（再校正用）
 - **実行タイミング**: スペース変換時（予算12）とアイドル再サジェスト時（予算60）のみ。打鍵毎のサジェストでは走らない。予測器が内部で行うトップ候補用変換（`used_in_predictor_realtime_conversion`）も除外される
 - **AI 評価オプション**（レジストリ `TypoCorrectionUseAi`、既定オフ）: 2パス目を Zenzai で評価する。コストが大きい（実測 26ms→154ms）ため変換時のみ適用
 

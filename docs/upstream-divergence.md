@@ -9,7 +9,7 @@ fork / subtree が upstream に対して持つパッチの一覧と、各パッ�
 | リポジトリ | fork 独自パッチ | upstream からの遅れ | 方針 |
 |---|---|---|---|
 | mozc（`unok/mozc` `patch-myime-next`） | 43 コミット（+4,708/−27、67 ファイル） | **0**（2026-09-02 に `4b1953a93`（2026-08-27）へ rebase 済み） | 定期追従。次回の衝突箇所は §1 |
-| AzooKeyKanaKanjiConverter（`unok/AzooKeyKanaKanjiConverter` `windows-llama-patch`） | 10 コミット（Swift 4 ファイルを含む） | 69 コミット（分岐点 2025-08-26、約 12 か月） | #49 で追従。upstream main の上に Windows パッチを移植し直す |
+| AzooKeyKanaKanjiConverter（`unok/AzooKeyKanaKanjiConverter` `windows-llama-patch`） | 2 コミット（vendored ヘッダ + Windows 対応、Swift 4 ファイル） | **0**（2026-09-02 に upstream main `93766c4`（2026-08-02）の上へ移植し直し） | 定期追従。移植の要点は §2 |
 | swift-tokenizers（`unok/swift-tokenizers` `windows-upstream-patch`） | 2 コミット | 6 コミット（基点 2026-05-19） | #50 で rebase |
 | swift-huggingface（`unok/swift-huggingface` `windows-patch`） | 1 コミット | 2 コミット（基点 v0.9.0） | #50 で rebase。upstream への Windows 対応 PR は未着手 |
 
@@ -70,18 +70,16 @@ upstream 側でこの 3 か月に動いたファイルは `protocol/commands.pro
 
 ## 2. AzooKeyKanaKanjiConverter subtree（`windows-llama-patch`）
 
-fork の分岐点は upstream `75c7c2b`（2025-08-26、v0.11.1 相当）。myime の subtree が最後に pull したのは fork の `ae68ff5`（2026-02-10）で、以後はローカルで直接編集し、2026-09-02 に `git subtree push` で fork へ反映した（fork 先端 `ad565e81b`）。fork と subtree の差分は 0。
+fork `windows-llama-patch` は 2026-09-02 に upstream main `93766c4`（2026-08-02）の上へ作り直した（先端 `bd6d5b8`、旧先端 `ad565e81b` はブランチ `windows-llama-patch-backup-20260902` に温存）。myime の subtree は同日に `git subtree pull --squash` で取り込み、fork と subtree の差分は 0（squash コミットの `git-subtree-split: bd6d5b8`）。
 
-### fork 独自パッチ
+### fork 独自パッチ（2 コミット）
 
-| 変更 | 処分 |
+| 変更 | 内容 |
 |---|---|
-| `Package.swift`: swift-tokenizers を `unok/swift-tokenizers` の `windows-upstream-patch` ブランチ参照に、Windows 用 systemLibrary（`Sources/llama.cpp`、`-Llib/windows`）、linkerSettings | **保持**。upstream は分岐後この領域を未変更 |
-| `Sources/llama.cpp/include/`: llama.cpp b4846（`fkunn1326/llama.cpp`、Zenzai トークナイザパッチ入り）のヘッダ vendoring | **保持**。llama.cpp 更新は #54 |
-| `Sources/llama.cpp/llama.h`（直下）: `include/llama.h` と別世代の重複コピー（`GPT2_SMALL_JAPANESE_CHAR` が 29、`include/` 側は 30）。`llama.pc` の includedir はこちらを指す | **#49 で `include/` 側に一本化** |
-| `ZenzContext.swift`、`Zenz.swift`、`ConvertRequestOptions.swift`、`KanaKanjiConverter.swift`: Windows で ggml-cpu.dll / ggml-vulkan.dll を llama.dll と同じディレクトリから明示ロード（`GGML_BACKEND_DL`）、GPU（Vulkan）のオプトインと起動時ウォームアップ | **保持**。upstream の Zenz リファクタ（#325）と `ZenzContext.swift` で衝突する（下記） |
-| `DictionaryBuilder.swift`: `import Collections` → `import OrderedCollections` | upstream main と同一。追従で収束 |
-| `.gitmodules`: 辞書 submodule が旧組織 `ensan-hcl/*` のまま | ルートの `.gitmodules` が実効のため実害なし。#49 で `azooKey/*` に揃える |
+| `chore: vendor fkunn1326/llama.cpp b4846 headers` | `Sources/llama.cpp/include/`（Zenzai トークナイザパッチ入り b4846、myime が DLL をビルドしている世代）、`module.modulemap`（`include/llama.h` のみ）、`llama.pc` / `llamacpp.pc`（includedir を `include/` に統一）。upstream 直下の `llama.h`（`GPT2_SMALL_JAPANESE_CHAR = 29` の別 fork 世代）は upstream のファイルなので触らない。実ビルドでは modulemap 経由で `include/` 側だけが使われる |
+| `feat: Windows/llama.cpp support on upstream main` | `Package.swift`（swift-tokenizers を `unok/swift-tokenizers` の `windows-upstream-patch` に、Windows/Linux の `llama` systemLibrary、Windows 向け linkerSettings）、`ZenzContext.swift`（`loadGgmlBackend` で llama.dll と同じディレクトリから ggml-cpu.dll / ggml-vulkan.dll を明示ロード、`createContext(path:useGpu:)` の Vulkan オプトインと CPU フォールバック、upstream の共有モデルキャッシュのキーに GPU モードを追加）、`Zenz.swift` / `ConvertRequestOptions.swift` / `KanaKanjiConverter.swift`（`useGpu` の伝播） |
+
+fork 版にあった「モデルとコンテキストを ZenzContext が直接所有して解放・再ロードする」実装は、upstream が共有モデルキャッシュへ分離したため移植せず、キャッシュキーへの GPU モード追加と GPU 失敗時の CPU モデルへの切替で同等の挙動にした。`.gitmodules` の辞書 URL が旧組織 `ensan-hcl/*` なのは upstream も同じで、GitHub のリダイレクトで解決するため触らない。
 
 ### llama.cpp バージョンの単一ソース化
 
@@ -92,20 +90,13 @@ fork の分岐点は upstream `75c7c2b`（2025-08-26、v0.11.1 相当）。myime
 - `ggml-webgpu.h` 等 4 本のスタブヘッダのみ b7310 以降の世代から追加コピーされたもの（実害なし）
 - 更新先候補は `azooKey/llama.cpp` の `b9637-azookey.1`（2026-07-28、同トークナイザ互換入り）。ただし upstream AKKKC の Package.swift が b4846 の xcframework を参照している間は Swift 側の API 差分を myime 単独で抱えることになるため保留（#54）
 
-### upstream 追従計画（#49）
+### 2026-09-02 の追従（#49）で吸収した upstream 変更
 
-upstream main（2026-08-30）は分岐点から 69 コミット先。主な変更は破壊的変更 `custom(URL)` → `tableName(String)`（#298）、新辞書フォーマット（#339）、Zenz リファクタ（#325）、右文脈入力（#340）、Zenzai 高速化（#350〜#354）、Converter 共有（#353）、LM タイポ訂正（#326）。
+旧分岐点 `75c7c2b`（2025-08-26、v0.11.1 相当）から main `93766c4` までの 69 コミット。破壊的変更 `custom(URL)` → `tableName(String)`（#298）、新辞書フォーマット（#339、辞書 submodule は v3.0.1 → v3.1.0-beta.15、絵文字辞書は v0.2 → v0.3）、Zenz リファクタ（#325）、右文脈入力（#340）、Zenzai 高速化（#350〜#354）、Converter 共有（#353）、LM タイポ訂正（#326）。
 
-2026-09-02 に試した `git rebase upstream/main` は 6 コミット目（`GGML_BACKEND_DL`）で `ZenzContext.swift` の 3 箇所（`WinSDK` import と `Darwin` import、`cpuBackendLoaded` ブロックと upstream の `inferenceThreadCount`、`reset_context` → `resetContext` 改名）が衝突した。コミット単位の解決は割に合わないため、**upstream main の上に Windows パッチを移植し直す**方式にする。
+コミット単位の `git rebase upstream/main` は `ZenzContext.swift` の 3 箇所（`WinSDK` / `Darwin` import、`cpuBackendLoaded` と upstream の `inferenceThreadCount`、`reset_context` → `resetContext` 改名）で衝突したため、upstream main の上に Windows パッチを移植し直した。myime 側（`src/swift-engine`）で必要だった追従は 2 点。`ConvertRequestOptions` の `requireJapanesePrediction` / `requireEnglishPrediction` が Bool から `PredictionMode`（`.autoMix` / `.disabled`）に変わったこと（2 行）と、予測候補（入力より長い読み）の `value` が変換候補と別スケールになったこと（実測: 「ほにゃらら」が −19.5 → −2.1、「京都府」が −12.0 → +1.2。入力全体をカバーする候補の値は −11.5 → −11.8 程度でほぼ不変）。後者はタイポ補正パスの「1 パス目最良との 1 モーラあたり比較」を狂わせ、本屋・京都の補正候補が消えたため、比較対象から入力より長い予測候補（`rubyCount > key.count`）を外した（`TypoCorrectionPass.swift`）。接頭辞断片は変換候補と同じスケールでマージンが断片込みで校正されているため残す（入力全体をカバーする候補だけにすると「がっこう」に顎骨が誤検出される）。辞書 v3.1 で基準側の断片「が」の値が −1.48 → −1.79 に下がり、顎骨（差分 −1.95）が旧マージン −2.0 を通り抜けたため、マージンを −1.8 に詰めた（真の補正の実測最悪 −1.66 との余裕 0.14）。再校正用に環境変数 `AZOOKEY_TYPO_DEBUG` で候補の値を stderr に出す診断出力を追加した。upstream が追加した `typoCorrectionMode` は既定の `.automatic`（Windows では無効）のままで、旧 `needTypoCorrection` のプラットフォーム既定と同じ挙動。myime 独自のタイポ補正（`TypoCorrectionPass.swift`）はこの設定と独立に動く。
 
-チェックリスト:
-
-- [ ] `custom(URL)` → `tableName(String)`（#298）が swift-engine 側の呼び出しに影響しないか
-- [ ] 新辞書フォーマット（#339）: 辞書 submodule を v3.0.1 → v3.1.0-beta.15 へ、絵文字辞書を v0.2 → v0.3 へ更新して動作確認
-- [ ] Zenz リファクタ後（#325）のコードへ Windows の DLL 明示ロードと GPU オプトインを移植
-- [ ] vendored `llama.h` の重複を `include/` 側に一本化し、`llama.pc` の includedir を合わせる
-- [ ] subtree pull 後に `lib/windows` の DLL が復活していないか確認
-- [ ] fork と subtree の差分が 0 であることを `git diff <fork tip> HEAD:src/AzooKeyKanaKanjiConverter` で確認
+次回の追従手順: fork の clone で `windows-llama-patch` を upstream main に rebase（衝突は上記 2 コミットの範囲に限られる）→ `swift build` で確認 → SSH で force-with-lease push → myime で `git subtree pull --squash`（前回 pull 以降にローカルで subtree を直接編集していると衝突する。その場合は squash コミットのツリーで `src/AzooKeyKanaKanjiConverter` を丸ごと置き換える。`git rm -r` は `.gitmodules` の辞書エントリを消すので復元すること）→ 辞書 submodule を `git submodule update --init` → `swift build` / `swift test`（PATH に `lib/windows`）。
 
 ## 3. swift-tokenizers / swift-huggingface（fork 廃止済み、2026-06-11）
 
