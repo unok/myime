@@ -1,6 +1,9 @@
 // タイポ補正2パスの設計は docs/architecture.md の typo correction セクションに記述する。
 import Foundation
 import KanaKanjiConverterModuleWithDefaultDictionary
+#if os(Windows)
+import WinSDK
+#endif
 
 nonisolated(unsafe) var typoConverter: KanaKanjiConverter?
 
@@ -24,11 +27,15 @@ struct TypoCandidate {
     let correctedReading: String
 }
 
-/// 閾値の再校正用の診断出力。環境変数 AZOOKEY_TYPO_DEBUG が設定されている時だけ stderr に出す。
+/// 閾値の再校正用の診断出力。環境変数 AZOOKEY_TYPO_DEBUG が設定されている時だけ出す。
 private let typoDebugEnabled = ProcessInfo.processInfo.environment["AZOOKEY_TYPO_DEBUG"] != nil
 private func typoDebugLog(_ message: @autoclosure () -> String) {
     guard typoDebugEnabled else { return }
-    FileHandle.standardError.write(Data((message() + "\n").utf8))
+    let line = message() + "\n"
+#if os(Windows)
+    line.withCString(encodedAs: UTF16.self) { OutputDebugStringW($0) }
+#endif
+    fputs(line, stderr)
 }
 
 /// カタカナ→ひらがな折り畳み(表記ゆれ判定用)
@@ -87,6 +94,102 @@ internal func bestScoredCoveringCandidate(in candidates: [Candidate], key: Strin
                 && !containsAsciiLikeNoise($0.text)
         }
         .max { $0.value < $1.value }
+}
+
+/// 補正候補の絞り込みに使う「ユーザーが打った通りの変換(1パス目)」の基準集合と、
+/// その 1 モーラあたり最良値。
+/// 絶対値だけでは「本屋(-11.5、出したい)」と「あたし(-11.1、誤検出)」を分離できないため、
+/// 1パス目の最良値と比べて明確に劣る補正は出さない(正しく打てている入力では 1パス目が
+/// 良い候補を出すので補正候補は自然に抑制される)。値は読みが長いほど小さくなるため
+/// 必ず 1 モーラあたりに正規化する(生の値だと ん/っ 挿入で長くなる補正が一律に負ける)。
+/// 予測候補(入力より長い読み)は比較対象から外す: AzooKeyKanaKanjiConverter の
+/// 2026-08 世代で予測候補の value が変換候補と別スケール(-19 → -2 程度)になり、
+/// 混ぜると本屋(-11.8/3)や京都(-10.8/4)が一律に落ちる(実測)。接頭辞断片(が/1 等)は
+/// 変換候補と同じスケールでマージンが断片込みで校正されているため残す
+/// (入力全体をカバーする候補だけにすると がっこう→顎骨 が誤検出)。
+/// 予測候補しか無い場合は全体にフォールバックし、既存候補ゼロなら nil。
+private func literalBaseline(
+    existingCandidates: [Candidate],
+    originalKeyCount: Int
+) -> (candidates: [Candidate], bestPerMora: Double)? {
+    let filteredCandidates = existingCandidates.filter { $0.rubyCount <= originalKeyCount }
+    let baselineCandidates = filteredCandidates.isEmpty ? existingCandidates : filteredCandidates
+    guard let bestPerMora = baselineCandidates
+        .map({ Double($0.value) / Double(max(1, $0.rubyCount)) })
+        .max()
+    else {
+        return nil
+    }
+    return (baselineCandidates, bestPerMora)
+}
+
+internal func selectTypoCandidates(
+    _ typoCandidates: [TypoCandidate],
+    existingCandidates: [Candidate],
+    originalKeyCount: Int
+) -> [TypoCandidate] {
+    guard let baseline = literalBaseline(
+        existingCandidates: existingCandidates,
+        originalKeyCount: originalKeyCount
+    ) else {
+        return []
+    }
+
+    var seenTexts = Set(existingCandidates.map(\.text))
+    var filteredCandidates: [TypoCandidate] = []
+    let ranked = typoCandidates.sorted { $0.value > $1.value }
+    // ベストから大きく劣る候補(誤った補正読みの強引な変換)は表示しない
+    let valueCutoff = (ranked.first?.value).map { $0 - 4.0 }
+    for candidate in ranked {
+        if let valueCutoff, candidate.value < valueCutoff {
+            break
+        }
+        let candidatePerMora = Double(candidate.value) / Double(max(1, candidate.correctedReading.count))
+        // 実測校正: 真の補正は差分 +1.48 〜 -1.66、明らかなゴミは -2.17 以下。
+        // 「わたし→あたし」(w 脱落)のように差分 -1.42 の妥当な補正もあるため、
+        // 取りこぼしを避ける側に倒して -2.0 を採用していた(末尾表示なのでノイズ許容)。
+        // 辞書 v3.1 では基準側の断片(が/1)が -1.48 → -1.79 に下がり、
+        // がっこう→顎骨(差分 -1.95)が -2.0 を通り抜けたため -1.8 に詰める
+        // (真の補正の最悪 -1.66 との余裕 0.14、顎骨との余裕 0.15)
+        if candidatePerMora < baseline.bestPerMora - 1.8 {
+            continue
+        }
+        guard !seenTexts.contains(candidate.text) else {
+            continue
+        }
+        seenTexts.insert(candidate.text)
+        filteredCandidates.append(candidate)
+        if filteredCandidates.count == maxTypoCandidates {
+            break
+        }
+    }
+
+    return filteredCandidates
+}
+
+private func typoSelectionDebugMessage(
+    key: String,
+    typoCandidates: [TypoCandidate],
+    existingCandidates: [Candidate],
+    originalKeyCount: Int
+) -> String {
+    let baseline = literalBaseline(
+        existingCandidates: existingCandidates,
+        originalKeyCount: originalKeyCount
+    )
+    let literalTop = (baseline?.candidates ?? [])
+        .sorted {
+            Double($0.value) / Double(max(1, $0.rubyCount))
+                > Double($1.value) / Double(max(1, $1.rubyCount))
+        }
+        .prefix(4)
+        .map { "\($0.text)/\($0.rubyCount)/\($0.value)" }
+        .joined(separator: " ")
+    let ranked = typoCandidates
+        .sorted { $0.value > $1.value }
+        .map { "\($0.text)/\($0.correctedReading)/\($0.value)" }
+        .joined(separator: " ")
+    return "[typo] key=\(key) literalBestPerMora=\(baseline.map { String($0.bestPerMora) } ?? "nil") literalTop=\(literalTop) ranked=\(ranked)"
 }
 
 internal func inferredTypoCorrectionRange(in key: String, data: [DicdataElement]) -> Range<Int>? {
@@ -327,50 +430,16 @@ func makeTypoCandidates(for key: String, existingCandidates: [Candidate]) -> [Ty
         return filteredCandidates
     }
 
-    // 絶対値だけでは「本屋(-11.5、出したい)」と「あたし(-11.1、誤検出)」を
-    // 分離できない。ユーザーが打った通りの変換(1パス目)の最良値と比べ、
-    // それより明確に劣る補正は出さない: 正しく打てている入力では
-    // 1パス目が良い候補を出すので、補正候補は自然に抑制される。
-    // 値は読みが長いほど小さくなるため、必ず1モーラあたりに正規化して比較する
-    // (生の値で比べると、ん/っ 挿入で長くなる補正が一律に負ける)
-    // 予測候補(入力より長い読み)は比較対象から外す。AzooKeyKanaKanjiConverter の
-    // 2026-08 世代で予測候補の value が変換候補と別スケール(-19 → -2 程度)になり、
-    // 混ぜると本屋(-11.8/3)や京都(-10.8/4)が一律に落ちる(実測)。
-    // 接頭辞断片(が/1 等)は変換候補と同じスケールで、-2.0 のマージンは断片込みで
-    // 校正されている(入力全体をカバーする候補だけにすると がっこう→顎骨 が誤検出)ため残す
-    let literalBestPerMora = existingCandidates
-        .filter { $0.rubyCount <= originalKeyCount }
-        .map { Double($0.value) / Double(max(1, $0.rubyCount)) }
-        .max()
-    var seenTexts = existingTexts
-    var filteredCandidates: [TypoCandidate] = []
-    let ranked = typoCandidates.sorted { $0.value > $1.value }
-    // ベストから大きく劣る候補(誤った補正読みの強引な変換)は表示しない
-    let valueCutoff = (ranked.first?.value).map { $0 - 4.0 }
-    typoDebugLog("[typo] key=\(key) literalBestPerMora=\(literalBestPerMora.map { String($0) } ?? "nil") literalTop=" + existingCandidates.sorted { Double($0.value) / Double(max(1, $0.rubyCount)) > Double($1.value) / Double(max(1, $1.rubyCount)) }.prefix(4).map { "\($0.text)/\($0.rubyCount)/\($0.value)" }.joined(separator: " ") + " ranked=" + ranked.map { "\($0.text)/\($0.correctedReading)/\($0.value)" }.joined(separator: " "))
-    for candidate in ranked {
-        if let valueCutoff, candidate.value < valueCutoff {
-            break
-        }
-        let candidatePerMora = Double(candidate.value) / Double(max(1, candidate.correctedReading.count))
-        // 実測校正: 真の補正は差分 +1.48 〜 -1.66、明らかなゴミは -2.17 以下。
-        // 「わたし→あたし」(w 脱落)のように差分 -1.42 の妥当な補正もあるため、
-        // 取りこぼしを避ける側に倒して -2.0 を採用していた(末尾表示なのでノイズ許容)。
-        // 辞書 v3.1 では基準側の断片(が/1)が -1.48 → -1.79 に下がり、
-        // がっこう→顎骨(差分 -1.95)が -2.0 を通り抜けたため -1.8 に詰める
-        // (真の補正の最悪 -1.66 との余裕 0.14、顎骨との余裕 0.15)
-        if let literalBestPerMora, candidatePerMora < literalBestPerMora - 1.8 {
-            continue
-        }
-        guard !seenTexts.contains(candidate.text) else {
-            continue
-        }
-        seenTexts.insert(candidate.text)
-        filteredCandidates.append(candidate)
-        if filteredCandidates.count == 3 {
-            break
-        }
-    }
-
-    return filteredCandidates
+    // 絞り込みの基準と閾値は literalBaseline / selectTypoCandidates を参照
+    typoDebugLog(typoSelectionDebugMessage(
+        key: key,
+        typoCandidates: typoCandidates,
+        existingCandidates: existingCandidates,
+        originalKeyCount: originalKeyCount
+    ))
+    return selectTypoCandidates(
+        typoCandidates,
+        existingCandidates: existingCandidates,
+        originalKeyCount: originalKeyCount
+    )
 }
