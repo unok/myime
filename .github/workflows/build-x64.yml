@@ -151,6 +151,23 @@ jobs:
         shell: pwsh
         run: scripts/ci/copy-swift-runtime.ps1 -OutputDir build/x64/release
 
+      # 配布 MSI を作る経路にもテストの網をかける（#51）。PR Tests と同じ swift test に加え、
+      # ビルド済み DLL を使う Python 回帰テスト（タイポ補正の出るべき/出ないべきケース）を回す。
+      - name: Test Swift package
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:GITHUB_WORKSPACE\src\AzooKeyKanaKanjiConverter\lib\windows;$env:PATH"
+          Set-Location src/swift-engine
+          swift test -c release
+
+      - name: Run engine regression tests (typo correction)
+        shell: pwsh
+        run: |
+          python scripts/tests/typo_conversion_test.py
+          if ($LASTEXITCODE -ne 0) { throw "typo_conversion_test.py failed" }
+          python scripts/tests/typo_clean_sweep_test.py
+          if ($LASTEXITCODE -ne 0) { throw "typo_clean_sweep_test.py failed" }
+
       # Build Mozc
       - name: Download Qt source
         if: steps.cache-qt.outputs.cache-hit != 'true'
@@ -196,6 +213,17 @@ jobs:
         shell: cmd
         working-directory: mozc/src
         run: bazelisk build --repository_cache=%GITHUB_WORKSPACE%\.bazel-repo-cache --disk_cache=%GITHUB_WORKSPACE%\.bazel-disk-cache --config=oss_windows --spawn_strategy=local //win32/installer:installer_x64
+
+      # エンジン DLL を使う Mozc のテスト（#51）。bazel test はテスト実行体を runfiles から実行するため
+      # bazel-bin に DLL を置いても見つからず、MYIME_AZOOKEY_DLL_DIR で配置先を明示する。
+      # MYIME_HERMETIC_TEST=1 は engine_config.h の hermetic test-mode の明示スイッチで、
+      # レジストリとモデル探索を無視し（Zenzai は走らない）、学習データを TEST_TMPDIR に置く。
+      # //session:session_handler_scenario_test は Mozc 辞書前提の期待値（15 シナリオ）が残るため
+      # 扱いを決めるまで対象外（docs/build.md「Mozc のテストをエンジン DLL 有りで走らせる」参照）。
+      - name: Test Mozc with engine DLL
+        shell: cmd
+        working-directory: mozc/src
+        run: bazelisk test --repository_cache=%GITHUB_WORKSPACE%\.bazel-repo-cache --disk_cache=%GITHUB_WORKSPACE%\.bazel-disk-cache --config=oss_windows --spawn_strategy=local --test_env=MYIME_HERMETIC_TEST=1 --test_env=MYIME_AZOOKEY_DLL_DIR=%GITHUB_WORKSPACE%\build\x64\release //converter:azookey_candidate_parser_test //converter:azookey_user_dictionary_test //session:session_handler_test //session:session_test
 
       - name: Copy MSI
         run: copy mozc\src\bazel-bin\win32\installer\Mozc_x64.msi .

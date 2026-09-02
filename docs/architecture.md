@@ -86,8 +86,9 @@ Mozc（C++ / TSF）をUIフレームワークとし、かな漢字変換を Azoo
 | ファイル | 内容 |
 |---|---|
 | `mozc/src/engine/engine.cc` | `ImmutableConverter` を AzooKey に差し替え。失敗時 NoOp フォールバック |
-| `mozc/src/converter/azookey_immutable_converter.cc/.h` | DLLロード・JSONパース・セグメント処理・タイポ候補への属性付与の本体（新規ファイル） |
-| `mozc/src/converter/engine_config.h` | エンジン種別（常時 AZOOKEY）・Zenzai モデルパス解決・レジストリ設定の読み取り（新規, ヘッダオンリー） |
+| `mozc/src/converter/azookey_immutable_converter.cc/.h` | DLLロード（hermetic test-mode では `MYIME_AZOOKEY_DLL_DIR` で配置先を明示可能）と `Convert` の本体（新規ファイル）。プロセス終了時に DLL を解放しない（解放するとローダロックで終了しなくなる） |
+| `mozc/src/converter/azookey_candidate_parser.cc/.h` | DLL の JSON 候補のパースとセグメントへの展開（部分一致の補完、タイポ候補の属性付与）。DLL 非依存で `azookey_candidate_parser_test` が検証する（新規ファイル） |
+| `mozc/src/converter/engine_config.h` | エンジン種別（常時 AZOOKEY）・Zenzai モデルパス解決・レジストリ設定の読み取り（新規, ヘッダオンリー）。`MYIME_HERMETIC_TEST=1` の時はレジストリとモデル探索を無視し、学習データを `TEST_TMPDIR` に置く hermetic test-mode（bazel test から `--test_env` で渡す） |
 | `mozc/src/server/mozc_server_main.cc` | 起動時の Zenzai モデル存在チェック → ダウンロード案内 |
 | `mozc/src/gui/zenzai_download/` | `mozc_tool --mode=zenzai_download` ダイアログ（新規） |
 | `mozc/src/gui/config_dialog/` | Conversion engine グループのチェックボックス群（レジストリ直読み書き） |
@@ -151,7 +152,7 @@ Mozc ユーザー辞書（user_dictionary.db）を正本とし、AzooKey へは�
 
 **辞書登録候補（Phase 2）**: `rewriter/word_register_rewriter.cc` が予測窓・変換窓の各セグメント末尾に【辞書登録】（`COMMAND_CANDIDATE` + 新 Command `LAUNCH_WORD_REGISTER_DIALOG`）を注入。モバイル（mixed_conversion）・predictor 内部変換（`used_in_predictor_realtime_conversion`）・空キー・候補ゼロには注入しない。選択時は全経路（SELECT/SUBMIT/数字キー/サジェスト commit）で `MaybeLaunchWordRegisterCandidate()` が確定を抑止して composition を取り消し、`Output.launch_tool_mode=WORD_REGISTER_DIALOG` と読み（`launch_tool_arg`、予測窓=入力全体、変換窓=フォーカス文節）を返す。TSF（`tip_edit_session_impl.cc` → `HandleToolOutput`）が読みを環境変数に設定して `mozc_tool --mode=word_register_dialog` を起動（ダイアログ側は無改修で macOS と同じ環境変数を読む）。Ctrl+F7（入力前状態）でも起動可。
 
-**ヘッドレス検証の注意**: `session_handler_main.exe` は DLL プリロード対策により azookey-engine.dll を「自分と同じディレクトリ」からのみロードするため、exe を `build/x64/release/` にコピーして実行する。`--profile` は Windows では未存在ディレクトリしか指定できない（既存だと CreateDirectoryW が失敗）。サジェスト末尾の固定表示は `merger_rewriter.h` のトリム保護（タイポ補正と同じ関門、辞書登録はさらに後）を通る。
+**ヘッドレス検証の注意**: `session_handler_main.exe` は DLL プリロード対策により azookey-engine.dll を「自分と同じディレクトリ」からのみロードするため、exe を `build/x64/release/` にコピーして実行する。`--profile` は Windows では未存在ディレクトリしか指定できない（既存だと CreateDirectoryW が失敗）。終了時にプロセスが残る問題は、`AzooKeyDllLoader` の静的デストラクタでの `FreeLibrary`（Swift ランタイムと ggml のスレッドが残ったまま DLL_PROCESS_DETACH に入りローダロックで停止）を廃止して解消済み（2026-09-02）。サジェスト末尾の固定表示は `merger_rewriter.h` のトリム保護（タイポ補正と同じ関門、辞書登録はさらに後）を通る。
 
 ## パススルー IME オフキー
 
