@@ -12,8 +12,15 @@ Write-Host "Downloading Vulkan SDK $vulkanVersion..."
 Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
 
 Write-Host "Installing Vulkan SDK..."
-Start-Process -FilePath $installerPath -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait
+$installer = Start-Process -FilePath $installerPath -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait -PassThru
+if ($installer.ExitCode -ne 0) {
+    throw "Vulkan SDK installer failed with exit code $($installer.ExitCode)"
+}
 
 $vulkanPath = "C:\VulkanSDK\$vulkanVersion"
+if (-not (Test-Path -LiteralPath "$vulkanPath\Bin")) {
+    throw "Vulkan SDK was not installed at $vulkanPath"
+}
+
 echo "VULKAN_SDK=$vulkanPath" >> $env:GITHUB_ENV
 echo "$vulkanPath\Bin" >> $env:GITHUB_PATH

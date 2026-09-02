@@ -60,11 +60,8 @@ echo ==============================================
 echo.
 echo Model saved to: %MODEL_FILE%
 echo.
-echo Next steps:
-echo 1. Update config.json with:
-echo    "zenzaiEnabled": true,
-echo    "zenzaiWeightPath": "%MODEL_FILE:\=\\%"
-echo 2. To use it in the IME, copy the file to %%LOCALAPPDATA%%\Mozc\models\
+echo Next step: copy the file to %%LOCALAPPDATA%%\Mozc\models\ so the installed IME can use it.
+echo (The MSI installer downloads the same model automatically; this script is for manual setup.)
 echo.
 
 pause
