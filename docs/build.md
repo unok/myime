@@ -72,6 +72,20 @@ swift test -c release
 
 タイポ補正・辞書登録のヘッドレス検証手順は [architecture.md](architecture.md) の各節を参照。
 
+### ローカルの Qt を CI と同じ削減ビルドに揃える
+
+既存の `mozc\src\third_party\qt` ジャンクション（`C:\Qt\6.8.0\msvc2022_64` 向け）を削除してから、CI（`.github/workflows/build-x64.yml`）と同じ順序で Qt ソースの取得 → 削減ビルド → 他の依存更新を実行する。版数は `scripts/ci/download-qt.ps1` の既定値（6.9.1）と `mozc/src/build_tools/update_deps.py` の定義が一致している必要がある。初回は時間がかかる。
+
+```cmd
+rmdir mozc\src\third_party\qt
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\ci\download-qt.ps1 -OutputDir mozc\src\third_party_cache
+cd mozc\src
+python build_tools\build_qt.py --release --confirm_license
+python build_tools\update_deps.py --noqt --nollvm --nomsys2 --nondk
+```
+
+`build_qt.py` は `third_party_cache\qtbase-everywhere-src-6.9.1.tar.xz` を既定で読み、`third_party\qt` に削減 Qt を生成する。ジャンクション運用を続ける場合は、ローカル版 MSI と CI 版 MSI を混在させない（完全アンインストール後にインストールする）。
+
 ## Mozc submodule の更新
 
 ```cmd

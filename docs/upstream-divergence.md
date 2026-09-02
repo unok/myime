@@ -10,8 +10,8 @@ fork / subtree が upstream に対して持つパッチの一覧と、各パッ�
 |---|---|---|---|
 | mozc（`unok/mozc` `patch-myime-next`） | 43 コミット（+4,708/−27、67 ファイル） | **0**（2026-09-02 に `4b1953a93`（2026-08-27）へ rebase 済み） | 定期追従。次回の衝突箇所は §1 |
 | AzooKeyKanaKanjiConverter（`unok/AzooKeyKanaKanjiConverter` `windows-llama-patch`） | 2 コミット（vendored ヘッダ + Windows 対応、Swift 4 ファイル） | **0**（2026-09-02 に upstream main `93766c4`（2026-08-02）の上へ移植し直し） | 定期追従。移植の要点は §2 |
-| swift-tokenizers（`unok/swift-tokenizers` `windows-upstream-patch`） | 2 コミット | 6 コミット（基点 2026-05-19） | #50 で rebase |
-| swift-huggingface（`unok/swift-huggingface` `windows-patch`） | 1 コミット | 2 コミット（基点 v0.9.0） | #50 で rebase。upstream への Windows 対応 PR は未着手 |
+| swift-tokenizers（`unok/swift-tokenizers` `windows-upstream-patch`） | 2 コミット | **0** | 定期追従 |
+| swift-huggingface（`unok/swift-huggingface` `windows-patch`） | 1 コミット | **0** | 定期追従 |
 
 ## 1. mozc fork（`patch-myime-next`）
 
@@ -98,15 +98,17 @@ fork 版にあった「モデルとコンテキストを ZenzContext が直接�
 
 次回の追従手順: fork の clone で `windows-llama-patch` を upstream main に rebase（衝突は上記 2 コミットの範囲に限られる）→ `swift build` で確認 → SSH で force-with-lease push → myime で `git subtree pull --squash`（前回 pull 以降にローカルで subtree を直接編集していると衝突する。その場合は squash コミットのツリーで `src/AzooKeyKanaKanjiConverter` を丸ごと置き換える。`git rm -r` は `.gitmodules` の辞書エントリを消すので復元すること）→ 辞書 submodule を `git submodule update --init` → `swift build` / `swift test`（PATH に `lib/windows`）。
 
-## 3. swift-tokenizers / swift-huggingface（fork 廃止済み、2026-06-11）
+## 3. swift-tokenizers / swift-huggingface
 
 `src/swift-tokenizers/` subtree は廃止し、upstream `huggingface/swift-transformers` 系を SwiftPM のリモート依存で使う（[ADR-0002](adr/0002-retire-swift-tokenizers-fork.md)）。
 
-- AzooKey の Package.swift → `unok/swift-tokenizers` の `windows-upstream-patch` ブランチ（upstream main `50843f9`（2026-05-19）+ 2 コミット: fnmatch シム、依存差し替え）
-- その依存 → `unok/swift-huggingface` の `windows-patch` ブランチ（v0.9.0 + 1 コミット: FileLock スタブ / fnmatch シム / cachesDirectory シム、約 70 行）
+- AzooKey の Package.swift → `unok/swift-tokenizers` の `windows-upstream-patch` ブランチ。基点は `huggingface/swift-transformers` main（1.3.3 以降）。差分は 2 コミット（fnmatch シム、swift-huggingface フォークへの依存差し替え）
+- その依存 → `unok/swift-huggingface` の `windows-patch` ブランチ。基点は `huggingface/swift-huggingface` main（0.10.0）。差分は 1 コミット（FileLock スタブ、fnmatch シム、cachesDirectory シム）
 - 旧ブランチ `windows-swift621-patch` は履歴として fork に残置
 
-Windows で必要なパッチは swift-huggingface 側の 4 箇所と本体 `HubApi.swift` の 1 箇所に限られ、myime が使う API（`HubApi.shared`、`AutoTokenizer.from(tokenizerConfig:tokenizerData:)` 等）は upstream 最新でも変更なし。#50 で両 fork を upstream 先端へ rebase し、`huggingface/swift-huggingface` への Windows 対応 PR を検討する。
+両 fork は 2026-09-02 に upstream 先端へ rebase 済み。swift-tokenizers の衝突は `Package.swift` の swift-jinja 2.4.2 行のみで、旧先端は `windows-upstream-patch-backup-20260902` に保存した。swift-huggingface は衝突なしで、旧先端は `windows-patch-backup-20260902` に保存した。
+
+Windows で必要なパッチは swift-huggingface 側の FileLock スタブ・fnmatch シム・cachesDirectory シムと、swift-tokenizers 側の fnmatch シム・依存差し替えに限られる。myime が使う API（`HubApi.shared`、`AutoTokenizer.from(tokenizerConfig:tokenizerData:)` 等）は upstream 最新でも変更なし。`huggingface/swift-huggingface` への Windows 対応 PR を検討する。
 
 ## 4. 関連する未 push / 未整理事項
 
