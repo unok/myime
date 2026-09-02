@@ -1,4 +1,5 @@
 public import Foundation
+import OrderedCollections
 import SwiftUtils
 
 public final class InputStyleManager {
@@ -26,16 +27,6 @@ public final class InputStyleManager {
                 return .empty
             }
             return table
-        case .custom(let url):
-            if let table = self.tables[id] {
-                return table
-            } else if let table = try? Self.loadTable(from: url) {
-                self.tables[id] = table
-                return table
-            } else {
-                print("Warning: Input table at the path \(url) was not found.")
-                return .empty
-            }
         }
     }
 
@@ -64,11 +55,13 @@ public final class InputStyleManager {
                     i = str.index(after: end)
                     continue
                 case "shift 0":
-                    result.append(.piece(.key(intention: "0", modifiers: [.shift])))
+                    // Treat token as key with input '0' and intention '0'
+                    result.append(.piece(.key(intention: "0", input: "0", modifiers: [.shift])))
                     i = str.index(after: end)
                     continue
                 case "shift _":
-                    result.append(.piece(.key(intention: "_", modifiers: [.shift])))
+                    // Treat token as key with input '_' and intention '_'
+                    result.append(.piece(.key(intention: "_", input: "_", modifiers: [.shift])))
                     i = str.index(after: end)
                     continue
                 default:
@@ -113,12 +106,10 @@ public final class InputStyleManager {
 
     public static func loadTable(from url: URL) throws -> InputTable {
         let content = try String(contentsOf: url, encoding: .utf8)
-        var map: [[InputTable.KeyElement]: [InputTable.ValueElement]] = [:]
+        var map: OrderedDictionary<[InputTable.KeyElement], [InputTable.ValueElement]> = [:]
         for line in content.components(separatedBy: .newlines) {
             // 空行は無視
             guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
-            // `#`で始まる行はコメントとして無視
-            guard !line.hasPrefix("#") else { continue }
             let cols = line.split(separator: "\t")
             // 要素の無い行は無視
             guard cols.count >= 2 else { continue }
@@ -127,6 +118,52 @@ public final class InputStyleManager {
             map[key] = value
         }
         return InputTable(baseMapping: map)
+    }
+
+    public enum ExportError: Error {
+        case unsupportedKeyElement(InputTable.KeyElement)
+    }
+
+    public static func exportTable(_ table: InputTable) throws(ExportError) -> String {
+        func encodeCharacter(_ character: Character) -> String {
+            switch character {
+            case "{": "{lbracket}"
+            case "}": "{rbracket}"
+            default: String(character)
+            }
+        }
+
+        func encodeKeyElement(_ element: InputTable.KeyElement) throws(ExportError) -> String {
+            switch element {
+            case .piece(let inputPiece):
+                switch inputPiece {
+                case .character(let character): encodeCharacter(character)
+                case .compositionSeparator: "{composition-separator}"
+                case .key(let intention, let input, let modifiers):
+                    switch (intention, input, modifiers) {
+                    case ("0", "0", [.shift]): "{shift 0}"
+                    case ("_", "_", [.shift]): "{shift _}"
+                    default: throw .unsupportedKeyElement(element)
+                    }
+                }
+            case .any1: "{any character}"
+            }
+        }
+
+        func encodeValueElement(_ element: InputTable.ValueElement) -> String {
+            switch element {
+            case .character(let character): encodeCharacter(character)
+            case .any1: "{any character}"
+            }
+        }
+
+        var lines: [String] = []
+        for (key, value) in table.baseMapping {
+            let encodedKeys = try key.map(encodeKeyElement).joined()
+            let encodedValues = value.map(encodeValueElement).joined()
+            lines.append("\(encodedKeys)\t\(encodedValues)")
+        }
+        return lines.joined(separator: "\n")
     }
 }
 
@@ -214,10 +251,6 @@ public extension InputStyleManager {
             let line = rawLine
             // Skip empty
             if line.trimmingCharacters(in: .whitespaces).isEmpty {
-                continue
-            }
-            // Skip comment lines beginning with '#'
-            if line.hasPrefix("#") {
                 continue
             }
 

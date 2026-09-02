@@ -1,4 +1,4 @@
-public import struct Foundation.URL
+import struct Foundation.URL
 
 public enum InputTableID: Sendable, Equatable, Hashable {
     case defaultRomanToKana
@@ -6,6 +6,5 @@ public enum InputTableID: Sendable, Equatable, Hashable {
     case defaultKanaJIS
     case defaultKanaUS
     case empty
-    case custom(URL)
     case tableName(String)
 }

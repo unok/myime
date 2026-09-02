@@ -58,7 +58,7 @@ final class DicdataStoreTests: XCTestCase {
         // 2) Wire DicdataStore with DictionaryMock as system dictionary, but point user URL to our export
         let store = DicdataStore(dictionaryURL: dictionaryMockURL)
         let state = store.prepareState()
-        state.updateUserDictionaryURL(userDir)
+        state.updateUserDictionaryURL(userDir, forceReload: false)
 
         // 3) Load LOUDS for user via store and get node index using the same char-map used to export
         guard let louds = store.loadLOUDS(query: "user", state: state) else {

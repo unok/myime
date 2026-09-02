@@ -62,7 +62,7 @@ final class LatticeTests: XCTestCase {
             InputStyleManager.registerInputStyle(table: InputTable(baseMapping: [
                 [.piece(.character("k")), .piece(.character("i"))]: [],
                 [.piece(.character("a"))]: [.character("あ")]
-            ]), for: "test")
+            ] as Dictionary), for: "test")
             var c = ComposingText()
             sequentialInput(&c, sequence: "ki", inputStyle: .mapped(id: .tableName("test")))
             XCTAssertEqual(c.convertTarget, "")

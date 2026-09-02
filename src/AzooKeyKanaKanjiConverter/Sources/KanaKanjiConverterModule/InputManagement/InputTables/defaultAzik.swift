@@ -1,5 +1,7 @@
+import OrderedCollections
+
 extension InputTables {
-    static let defaultAzikPieceMap: [[InputTable.KeyElement]: [InputTable.ValueElement]] = InputTables.Helper.constructPieceMap([
+    static let defaultAzikPieceMap = InputTables.Helper.constructPieceMap([
         "a": "あ",
         "i": "い",
         "u": "う",

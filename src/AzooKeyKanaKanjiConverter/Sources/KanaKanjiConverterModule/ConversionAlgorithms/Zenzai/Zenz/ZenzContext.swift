@@ -2,62 +2,16 @@
 // Zenzai/ZenzaiCPU が有効でない場合、llama-mock.swift の実装が利用される
 import llama
 #endif
+#if canImport(Darwin)
+import Darwin
+#endif
 #if os(Windows)
 import WinSDK
 #endif
 
 import Algorithms
-import EfficientNGram
 import Foundation
-import HeapModule
 import SwiftUtils
-
-struct FixedSizeHeap<Element: Comparable> {
-    private var size: Int
-    private var heap: Heap<Element>
-
-    init(size: Int) {
-        self.size = size
-        self.heap = []
-    }
-
-    mutating func removeMax() {
-        self.heap.removeMax()
-    }
-
-    mutating func removeMin() {
-        self.heap.removeMin()
-    }
-
-    @discardableResult
-    mutating func insertIfPossible(_ element: Element) -> Bool {
-        if self.heap.count < self.size {
-            self.heap.insert(element)
-            return true
-        } else if let min = self.heap.min, element > min {
-            self.heap.replaceMin(with: element)
-            return true
-        } else {
-            return false
-        }
-    }
-
-    var unordered: [Element] {
-        self.heap.unordered
-    }
-
-    var max: Element? {
-        self.heap.max
-    }
-
-    var min: Element? {
-        self.heap.min
-    }
-
-    var isEmpty: Bool {
-        self.heap.isEmpty
-    }
-}
 
 enum ZenzError: LocalizedError {
     case couldNotLoadModel(path: String)
@@ -73,201 +27,540 @@ enum ZenzError: LocalizedError {
     }
 }
 
-final class ZenzContext {
-    private var model: OpaquePointer
-    private var context: OpaquePointer
-    private var vocab: OpaquePointer
-    private var prevInput: [llama_token] = []
-    private var prevPrompt: [llama_token] = []
-    private let useGpu: Bool
+/// llama.cpp のバックエンドはプロセス単位で一度だけ初期化する。
+///
+/// `llama_backend_free()` は現在 MPI 用の後始末にしか使われないため、モデルや
+/// コンテキストより先に解放される可能性があるプロセス終了時の明示解放は行わない。
+private enum ZenzBackend {
+    private static let initialized: Void = {
+        llama_backend_init()
+    }()
 
-    private let n_len: Int32 = 512
+    static func initializeIfNeeded() {
+        _ = self.initialized
+    }
+}
 
-    init(model: OpaquePointer, context: OpaquePointer, vocab: OpaquePointer, useGpu: Bool) {
+private final class ZenzTokenArrayBox {
+    init(_ tokens: [llama_token]) {
+        self.tokens = tokens
+    }
+
+    let tokens: [llama_token]
+}
+
+struct ZenzResolvedConversionCacheKey: Equatable, Hashable {
+    var input: [ComposingText.InputElement]
+    var convertTarget: String
+    var convertTargetCursorPosition: Int?
+    var keyboardLanguage: KeyboardLanguage
+    var versionDependentConfig: ConvertRequestOptions.ZenzaiVersionDependentMode
+    var prefixConstraint: Kana2Kanji.PrefixConstraint
+    var inferenceLimit: Int
+}
+
+struct ZenzDraftConversionCacheKey: Equatable, Hashable {
+    var input: [ComposingText.InputElement]
+    var convertTarget: String
+    var convertTargetCursorPosition: Int?
+    var keyboardLanguage: KeyboardLanguage
+    var versionDependentConfig: ConvertRequestOptions.ZenzaiVersionDependentMode
+    var prefixConstraint: Kana2Kanji.PrefixConstraint
+}
+
+struct ZenzDraftConversion {
+    var resultPrevs: [RegisteredNode]
+    var resultLatticeHead: ZenzResolvedLatticeHead
+}
+
+struct ZenzResolvedConversion {
+    var resultPrevs: [RegisteredNode]
+    var resultLatticeHead: ZenzResolvedLatticeHead
+    var prefixConstraint: Kana2Kanji.PrefixConstraint
+    var satisfyingCandidate: Candidate
+}
+
+struct ZenzResolvedLatticeNode: Hashable {
+    var data: DicdataElement
+    var range: Lattice.LatticeRange
+}
+
+final class ZenzResolvedLatticeHead: @unchecked Sendable {
+    init(nodes: [ZenzResolvedLatticeNode]) {
+        self.nodes = nodes
+        self.fingerprint = nodes.hashValue
+    }
+
+    let nodes: [ZenzResolvedLatticeNode]
+    let fingerprint: Int
+}
+
+private final class ZenzResolvedConversionCache: @unchecked Sendable {
+    private struct Entry {
+        var value: ZenzResolvedConversion
+        var accessIndex: UInt64
+    }
+
+    init(capacity: Int) {
+        self.capacity = capacity
+    }
+
+    func value(for key: ZenzResolvedConversionCacheKey) -> ZenzResolvedConversion? {
+        self.lock.withLock {
+            guard var entry = self.entries[key] else {
+                return nil
+            }
+            self.accessIndex &+= 1
+            entry.accessIndex = self.accessIndex
+            self.entries[key] = entry
+            return entry.value
+        }
+    }
+
+    func insert(_ value: ZenzResolvedConversion, for key: ZenzResolvedConversionCacheKey) {
+        var value = value
+        self.lock.withLock {
+            // 逐次入力では最大辞書長を超えた後の先頭候補が同一になる。
+            // 不変配列を既存entryと共有し、prefixごとの重複保持を避ける。
+            if let sharedHead = self.entries.values.lazy.map({
+                $0.value.resultLatticeHead
+            }).first(where: {
+                $0.fingerprint == value.resultLatticeHead.fingerprint
+                    && $0.nodes == value.resultLatticeHead.nodes
+            }) {
+                value.resultLatticeHead = sharedHead
+            }
+            self.accessIndex &+= 1
+            self.entries[key] = Entry(value: value, accessIndex: self.accessIndex)
+            if self.entries.count > self.capacity,
+               let oldestKey = self.entries.min(by: {
+                   $0.value.accessIndex < $1.value.accessIndex
+               })?.key {
+                self.entries.removeValue(forKey: oldestKey)
+            }
+        }
+    }
+
+    private let capacity: Int
+    private var entries: [ZenzResolvedConversionCacheKey: Entry] = [:]
+    private var accessIndex: UInt64 = 0
+    private let lock = NSLock()
+}
+
+/// 同じ辞書状態・入力・制約から得た不変のdraft経路を共有するLRU cache。
+/// 可変な探索状態を含むlattice本体は保持しない。
+final class ZenzDraftConversionCache: @unchecked Sendable {
+    private struct Entry {
+        var value: ZenzDraftConversion
+        var accessIndex: UInt64
+    }
+
+    init(capacity: Int) {
+        self.capacity = capacity
+    }
+
+    func value(for key: ZenzDraftConversionCacheKey) -> ZenzDraftConversion? {
+        self.lock.withLock {
+            guard var entry = self.entries[key] else { return nil }
+            self.accessIndex &+= 1
+            entry.accessIndex = self.accessIndex
+            self.entries[key] = entry
+            return entry.value
+        }
+    }
+
+    func insert(_ value: ZenzDraftConversion, for key: ZenzDraftConversionCacheKey) {
+        var value = value
+        self.lock.withLock {
+            if let sharedHead = self.entries.values.lazy.map({
+                $0.value.resultLatticeHead
+            }).first(where: {
+                $0.fingerprint == value.resultLatticeHead.fingerprint
+                    && $0.nodes == value.resultLatticeHead.nodes
+            }) {
+                value.resultLatticeHead = sharedHead
+            }
+            self.accessIndex &+= 1
+            self.entries[key] = Entry(value: value, accessIndex: self.accessIndex)
+            if self.entries.count > self.capacity,
+               let oldestKey = self.entries.min(by: {
+                   $0.value.accessIndex < $1.value.accessIndex
+               })?.key {
+                self.entries.removeValue(forKey: oldestKey)
+            }
+        }
+    }
+
+    private let capacity: Int
+    private var entries: [ZenzDraftConversionCacheKey: Entry] = [:]
+    private var accessIndex: UInt64 = 0
+    private let lock = NSLock()
+}
+
+/// 1つの`KanaKanjiConverter`内で再利用するZenzaiのメモ化キャッシュ。
+///
+/// モデルやnative contextとは所有者を分け、別Converter間では共有しない。一方、
+/// `stopComposition()`は入力中の状態だけを終了するAPIなので、このキャッシュは
+/// compositionを跨いで保持する。
+final class ZenzaiMemoizationCache: @unchecked Sendable {
+    init(
+        evaluationCapacity: Int = 256,
+        resolvedConversionCapacity: Int = 64,
+        draftConversionCapacity: Int = 128,
+        promptTokenCapacity: Int = 128
+    ) {
+        self.evaluationCache = ZenzEvaluationCache(capacity: evaluationCapacity)
+        self.resolvedConversionCache = ZenzResolvedConversionCache(
+            capacity: resolvedConversionCapacity
+        )
+        self.draftConversionCache = ZenzDraftConversionCache(
+            capacity: draftConversionCapacity
+        )
+        self.evaluationPromptTokenCache.countLimit = promptTokenCapacity
+    }
+
+    func cachedEvaluation(for key: ZenzEvaluationCacheKey) -> CandidateEvaluationResult? {
+        self.evaluationCache.value(for: key)
+    }
+
+    func cacheEvaluation(_ result: CandidateEvaluationResult, for key: ZenzEvaluationCacheKey) {
+        self.evaluationCache.insert(result, for: key)
+    }
+
+    func cachedResolvedConversion(
+        for key: ZenzResolvedConversionCacheKey
+    ) -> ZenzResolvedConversion? {
+        self.resolvedConversionCache.value(for: key)
+    }
+
+    func cacheResolvedConversion(
+        _ value: ZenzResolvedConversion,
+        for key: ZenzResolvedConversionCacheKey
+    ) {
+        self.resolvedConversionCache.insert(value, for: key)
+    }
+
+    func cachedDraftConversion(for key: ZenzDraftConversionCacheKey) -> ZenzDraftConversion? {
+        self.draftConversionCache.value(for: key)
+    }
+
+    func cacheDraftConversion(
+        _ value: ZenzDraftConversion,
+        for key: ZenzDraftConversionCacheKey
+    ) {
+        self.draftConversionCache.insert(value, for: key)
+    }
+
+    func cachedEvaluationPromptTokens(for prompt: String) -> [llama_token]? {
+        self.evaluationPromptTokenCache.object(forKey: prompt as NSString)?.tokens
+    }
+
+    func cacheEvaluationPromptTokens(_ tokens: [llama_token], for prompt: String) {
+        self.evaluationPromptTokenCache.setObject(
+            ZenzTokenArrayBox(tokens),
+            forKey: prompt as NSString
+        )
+    }
+
+    private let evaluationCache: ZenzEvaluationCache
+    private let resolvedConversionCache: ZenzResolvedConversionCache
+    private let draftConversionCache: ZenzDraftConversionCache
+    private let evaluationPromptTokenCache = NSCache<NSString, ZenzTokenArrayBox>()
+}
+
+/// 読み取り専用のGGUFモデルを複数の推論コンテキスト間で共有する。
+///
+/// KV cacheなどの可変状態は`ZenzContext`側に残し、モデルの重みとvocabularyだけを
+/// 共有することで、同じモデルを利用するConverterごとの再ロードを避ける。
+private final class SharedZenzModel {
+    init(path: String, useGpu: Bool = false) throws {
+        ZenzBackend.initializeIfNeeded()
+        var modelParams = llama_model_default_params()
+        modelParams.use_mmap = true
+        #if Zenzai && os(Windows)
+        // CPU-only ロード。`n_gpu_layers = 0` だけでは ggml-vulkan.dll がロード済みの
+        // プロセスで Vulkan デバイスも列挙されるため、NULL 終端の CPU-only デバイス
+        // リストを渡す（ZenzaiCPU 分岐と同じ方式）。buffer.baseAddress はクロージャ外で
+        // 無効になるので、代入とロードをクロージャ内に閉じ込める
+        func loadCpuOnly(_ params: inout llama_model_params) -> OpaquePointer? {
+            params.n_gpu_layers = 0
+            params.split_mode = LLAMA_SPLIT_MODE_NONE
+            guard let cpuDevice = ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_CPU) else {
+                debug("Could not find CPU backend; trying without an explicit device list")
+                return llama_model_load_from_file(path, params)
+            }
+            var devices = [cpuDevice, nil]
+            return devices.withUnsafeMutableBufferPointer { buffer in
+                params.devices = buffer.baseAddress
+                return llama_model_load_from_file(path, params)
+            }
+        }
+        var effectiveUseGpu = useGpu
+        var loadedModel: OpaquePointer?
+        if effectiveUseGpu {
+            modelParams.n_gpu_layers = 999
+            loadedModel = llama_model_load_from_file(path, modelParams)
+        } else {
+            loadedModel = loadCpuOnly(&modelParams)
+        }
+        if loadedModel == nil && effectiveUseGpu {
+            debug("Could not load model with Vulkan; falling back to CPU")
+            effectiveUseGpu = false
+            modelParams = llama_model_default_params()
+            modelParams.use_mmap = true
+            loadedModel = loadCpuOnly(&modelParams)
+        }
+        #elseif ZenzaiCPU
+        let effectiveUseGpu = false
+        modelParams.n_gpu_layers = 0
+        modelParams.split_mode = LLAMA_SPLIT_MODE_NONE
+        guard let cpuDevice = ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_CPU) else {
+            debug("Could not find CPU backend")
+            throw ZenzError.couldNotLoadModel(path: path)
+        }
+        // NULL終端のCPU-onlyデバイスリストを渡す。`n_gpu_layers = 0`だけでは
+        // llama.cppがMetalデバイスも列挙し、context生成時に初期化してしまう。
+        var devices = [cpuDevice, nil]
+        let loadedModel = devices.withUnsafeMutableBufferPointer { buffer in
+            modelParams.devices = buffer.baseAddress
+            return llama_model_load_from_file(path, modelParams)
+        }
+        #else
+        let effectiveUseGpu = false
+        let loadedModel = llama_model_load_from_file(path, modelParams)
+        #endif
+        guard let model = loadedModel else {
+            debug("Could not load model at \(path)")
+            throw ZenzError.couldNotLoadModel(path: path)
+        }
+        guard let vocab = llama_model_get_vocab(model) else {
+            llama_model_free(model)
+            debug("Could not load vocab!")
+            throw ZenzError.couldNotLoadVocab
+        }
         self.model = model
-        self.context = context
         self.vocab = vocab
-        self.useGpu = useGpu
+        self.useGpu = effectiveUseGpu
     }
 
     deinit {
+        llama_model_free(self.model)
+    }
+
+    let model: OpaquePointer
+    let vocab: OpaquePointer
+    let useGpu: Bool
+}
+
+/// 同時に強参照するモデルを1個に制限する、プロセス共通のモデルキャッシュ。
+///
+/// `NSCache`にすることでメモリプレッシャー時にはモデルを解放できる。呼び出し側の
+/// `ZenzContext`もモデルを強参照するため、使用中のモデルが解放されることはない。
+private final class SharedZenzModelCache: @unchecked Sendable {
+    static let shared = SharedZenzModelCache()
+
+    private init() {
+        self.cache.countLimit = 1
+    }
+
+    func model(path: String, useGpu: Bool = false) throws -> SharedZenzModel {
+        try self.lock.withLock {
+            let key = "\(path)|gpu:\(useGpu)" as NSString
+            if let cached = self.cache.object(forKey: key) {
+                return cached
+            }
+            let model = try SharedZenzModel(path: path, useGpu: useGpu)
+            self.cache.setObject(model, forKey: key)
+            return model
+        }
+    }
+
+    private let cache = NSCache<NSString, SharedZenzModel>()
+    private let lock = NSLock()
+}
+
+final class ZenzContext {
+    private let sharedModel: SharedZenzModel
+    private var context: OpaquePointer
+    private var batch: llama_batch
+    private var prevInputBySeq: [llama_seq_id: [llama_token]] = [:]
+    private var prevPromptBySeq: [llama_seq_id: String] = [:]
+
+    private let n_len: Int32 = 512
+    private let evalSeqId: llama_seq_id = 0
+    private let inputPredictionSeqId: llama_seq_id = 1
+
+    private init(sharedModel: SharedZenzModel, context: OpaquePointer) {
+        self.sharedModel = sharedModel
+        self.context = context
+        self.batch = llama_batch_init(512, 0, 1)
+    }
+
+    deinit {
+        llama_batch_free(self.batch)
         llama_free(context)
-        llama_model_free(model)
-        llama_backend_free()
     }
 
     private static var ctx_params: llama_context_params {
-        let n_threads = max(1, min(8, ProcessInfo.processInfo.processorCount - 2))
+        let n_threads = self.inferenceThreadCount
         debug("Using \(n_threads) threads")
         var ctx_params = llama_context_default_params()
         ctx_params.n_ctx = 512
+        ctx_params.flash_attn = true
         ctx_params.n_threads       = Int32(n_threads)
         ctx_params.n_threads_batch = Int32(n_threads)
         ctx_params.n_batch = 512
+        #if Zenzai || ZenzaiCPU
+        ctx_params.n_ubatch = 64
+        #endif
+        // 推論時間は呼び出し側で計測する。llama.cpp内部の統計更新は不要。
+        ctx_params.no_perf = true
         return ctx_params
     }
 
+    /// 対話的な推論に使うCPUスレッド数を実行環境のトポロジーから決定する。
+    ///
+    /// Apple Siliconでは性能の異なるクラスタを跨ぐと短いdecodeのbarrier待ちが
+    /// 増えるため、最高性能クラスタの物理コア数を利用する。それ以外の環境では
+    /// OSへ応答性の余地を残しつつ、llama.cppの小規模モデルで過剰並列にならない
+    /// よう8スレッドを上限とする。
+    private static var inferenceThreadCount: Int {
+        let activeProcessorCount = max(1, ProcessInfo.processInfo.activeProcessorCount)
+        #if canImport(Darwin)
+        let performanceCoreCount = self.sysctlInt32("hw.perflevel0.physicalcpu")
+        #else
+        let performanceCoreCount: Int? = nil
+        #endif
+        return self.selectInferenceThreadCount(
+            activeProcessorCount: activeProcessorCount,
+            performanceCoreCount: performanceCoreCount
+        )
+    }
+
+    /// DarwinではmacOS/iOSともに最高性能クラスタを優先し、sysctl値を取得できない
+    /// 端末やDarwin以外では論理CPU数から安全なフォールバックを選ぶ。
+    static func selectInferenceThreadCount(
+        activeProcessorCount: Int,
+        performanceCoreCount: Int?
+    ) -> Int {
+        let activeProcessorCount = max(1, activeProcessorCount)
+        if let performanceCoreCount,
+           performanceCoreCount > 0,
+           performanceCoreCount <= activeProcessorCount {
+            return performanceCoreCount
+        }
+        let reservedProcessorCount = if activeProcessorCount >= 8 {
+            2
+        } else if activeProcessorCount >= 4 {
+            1
+        } else {
+            0
+        }
+        return max(1, min(8, activeProcessorCount - reservedProcessorCount))
+    }
+
+    #if canImport(Darwin)
+    private static func sysctlInt32(_ name: String) -> Int? {
+        var value: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        guard sysctlbyname(name, &value, &size, nil, 0) == 0, size == MemoryLayout<Int32>.size else {
+            return nil
+        }
+        return Int(value)
+    }
+    #endif
+
     #if (Zenzai || ZenzaiCPU) && os(Windows)
+    /// llama.dll と同じディレクトリにある ggml バックエンド DLL を明示的にロードする。
+    /// 既定の DLL 検索順（カレントディレクトリを含む）に頼らないための処理。
+    private static func loadGgmlBackend(named dllName: String) -> Bool {
+        let llamaModule = "llama.dll".withCString(encodedAs: UTF16.self) {
+            GetModuleHandleW($0)
+        }
+        guard let llamaModule else {
+            debug("Could not find llama.dll while loading \(dllName)")
+            return false
+        }
+
+        var modulePathBuffer = [WCHAR](repeating: 0, count: Int(MAX_PATH))
+        let modulePathLength = modulePathBuffer.withUnsafeMutableBufferPointer {
+            GetModuleFileNameW(llamaModule, $0.baseAddress, DWORD($0.count))
+        }
+        guard modulePathLength > 0 && modulePathLength < modulePathBuffer.count else {
+            debug("Could not resolve llama.dll path while loading \(dllName)")
+            return false
+        }
+
+        let modulePath = modulePathBuffer.withUnsafeBufferPointer {
+            String(decoding: $0.prefix(Int(modulePathLength)), as: UTF16.self)
+        }
+        guard let separatorIndex = modulePath.lastIndex(where: { $0 == "\\" || $0 == "/" }) else {
+            debug("Could not resolve llama.dll directory while loading \(dllName)")
+            return false
+        }
+        let backendPath = "\(modulePath[..<separatorIndex])\\\(dllName)"
+
+        let backend = backendPath.withCString {
+            ggml_backend_load($0)
+        }
+        guard backend != nil else {
+            debug("Could not load \(dllName) at \(backendPath)")
+            return false
+        }
+        return true
+    }
+
     // static let の遅延初期化はスレッドセーフに一度だけ実行されるため、
     // ロックや可変フラグなしでプロセス内一回のロードを保証できる
-    private static let cpuBackendLoaded: Bool = {
-        let llamaModule = "llama.dll".withCString(encodedAs: UTF16.self) {
-            GetModuleHandleW($0)
-        }
-        guard let llamaModule else {
-            debug("Could not find llama.dll while loading ggml-cpu.dll")
-            return false
-        }
+    private static let cpuBackendLoaded: Bool = loadGgmlBackend(named: "ggml-cpu.dll")
+    private static let vulkanBackendLoaded: Bool = loadGgmlBackend(named: "ggml-vulkan.dll")
 
-        var modulePathBuffer = [WCHAR](repeating: 0, count: Int(MAX_PATH))
-        let modulePathLength = modulePathBuffer.withUnsafeMutableBufferPointer {
-            GetModuleFileNameW(llamaModule, $0.baseAddress, DWORD($0.count))
-        }
-        guard modulePathLength > 0 && modulePathLength < modulePathBuffer.count else {
-            debug("Could not resolve llama.dll path while loading ggml-cpu.dll")
-            return false
-        }
-
-        let modulePath = modulePathBuffer.withUnsafeBufferPointer {
-            String(decoding: $0.prefix(Int(modulePathLength)), as: UTF16.self)
-        }
-        guard let separatorIndex = modulePath.lastIndex(where: { $0 == "\\" || $0 == "/" }) else {
-            debug("Could not resolve llama.dll directory while loading ggml-cpu.dll")
-            return false
-        }
-        let cpuBackendPath = "\(modulePath[..<separatorIndex])\\ggml-cpu.dll"
-
-        let backend = cpuBackendPath.withCString {
-            ggml_backend_load($0)
-        }
-        guard backend != nil else {
-            debug("Could not load ggml-cpu.dll at \(cpuBackendPath)")
-            return false
-        }
-        return true
-    }()
-
-    private static let vulkanBackendLoaded: Bool = {
-        let llamaModule = "llama.dll".withCString(encodedAs: UTF16.self) {
-            GetModuleHandleW($0)
-        }
-        guard let llamaModule else {
-            debug("Could not find llama.dll while loading ggml-vulkan.dll")
-            return false
-        }
-
-        var modulePathBuffer = [WCHAR](repeating: 0, count: Int(MAX_PATH))
-        let modulePathLength = modulePathBuffer.withUnsafeMutableBufferPointer {
-            GetModuleFileNameW(llamaModule, $0.baseAddress, DWORD($0.count))
-        }
-        guard modulePathLength > 0 && modulePathLength < modulePathBuffer.count else {
-            debug("Could not resolve llama.dll path while loading ggml-vulkan.dll")
-            return false
-        }
-
-        let modulePath = modulePathBuffer.withUnsafeBufferPointer {
-            String(decoding: $0.prefix(Int(modulePathLength)), as: UTF16.self)
-        }
-        guard let separatorIndex = modulePath.lastIndex(where: { $0 == "\\" || $0 == "/" }) else {
-            debug("Could not resolve llama.dll directory while loading ggml-vulkan.dll")
-            return false
-        }
-        let vulkanBackendPath = "\(modulePath[..<separatorIndex])\\ggml-vulkan.dll"
-
-        let backend = vulkanBackendPath.withCString {
-            ggml_backend_load($0)
-        }
-        guard backend != nil else {
-            debug("Could not load ggml-vulkan.dll at \(vulkanBackendPath)")
-            return false
-        }
-        return true
-    }()
+    private static func ensureBackendsLoaded() {
+        // この参照が static let の遅延初期化＝DLL ロードのトリガー。削除禁止。
+        _ = Self.cpuBackendLoaded
+    }
     #endif
 
     static func createContext(path: String, useGpu: Bool = false) throws -> ZenzContext {
         #if (Zenzai || ZenzaiCPU) && os(Windows)
+        Self.ensureBackendsLoaded()
         if !Self.cpuBackendLoaded {
             debug("CPU backend is not loaded; Zenzai model load will likely fail")
         }
         #endif
-        llama_backend_init()
-        var model_params = llama_model_default_params()
-        model_params.use_mmap = true
-        var effectiveUseGpu = false
         #if Zenzai && os(Windows)
-        effectiveUseGpu = useGpu && Self.vulkanBackendLoaded
+        let effectiveUseGpu = useGpu && Self.vulkanBackendLoaded
         if useGpu && !effectiveUseGpu {
             debug("Vulkan backend is not loaded; falling back to CPU")
         }
-        if effectiveUseGpu {
-            model_params.n_gpu_layers = 999
-        }
+        #else
+        let effectiveUseGpu = false
         #endif
-        #if ZenzaiCPU
-        // CPU 専用: GPU へのオフロードを無効化
-        model_params.n_gpu_layers = 0
-        model_params.split_mode = LLAMA_SPLIT_MODE_NONE
-        #endif
-        var loadedModel = llama_model_load_from_file(path, model_params)
-        if loadedModel == nil && effectiveUseGpu {
-            debug("Could not load model with Vulkan; falling back to CPU")
-            effectiveUseGpu = false
-            model_params = llama_model_default_params()
-            model_params.use_mmap = true
-            model_params.n_gpu_layers = 0
-            model_params.split_mode = LLAMA_SPLIT_MODE_NONE
-            loadedModel = llama_model_load_from_file(path, model_params)
-        }
-        guard var model = loadedModel else {
-            debug("Could not load model at \(path)")
-            throw ZenzError.couldNotLoadModel(path: path)
-        }
-
+        var sharedModel = try SharedZenzModelCache.shared.model(path: path, useGpu: effectiveUseGpu)
         var params = ctx_params
         #if ZenzaiCPU
         // CPU 専用: KV / KQV 等の GPU オフロードを完全に無効化
         params.offload_kqv = false
         #endif
-        var loadedContext = llama_init_from_model(model, params)
-        if loadedContext == nil && effectiveUseGpu {
+        var loadedContext = llama_init_from_model(sharedModel.model, params)
+        if loadedContext == nil && sharedModel.useGpu {
             debug("Could not load context with Vulkan; falling back to CPU")
-            llama_model_free(model)
-            effectiveUseGpu = false
-            model_params = llama_model_default_params()
-            model_params.use_mmap = true
-            model_params.n_gpu_layers = 0
-            model_params.split_mode = LLAMA_SPLIT_MODE_NONE
-            guard let cpuModel = llama_model_load_from_file(path, model_params) else {
-                debug("Could not load model at \(path)")
-                throw ZenzError.couldNotLoadModel(path: path)
-            }
-            model = cpuModel
+            sharedModel = try SharedZenzModelCache.shared.model(path: path, useGpu: false)
             params = ctx_params
-            #if ZenzaiCPU
-            params.offload_kqv = false
-            #endif
-            loadedContext = llama_init_from_model(model, params)
+            loadedContext = llama_init_from_model(sharedModel.model, params)
         }
-        guard let context = loadedContext else {
+        let context = loadedContext
+        guard let context else {
             debug("Could not load context!")
-            llama_model_free(model)
             throw ZenzError.couldNotLoadContext
         }
 
-        let vocab = llama_model_get_vocab(model)
-        guard let vocab else {
-            debug("Could not load vocab!")
-            llama_free(context)
-            llama_model_free(model)
-            throw ZenzError.couldNotLoadVocab
-        }
-
-        return ZenzContext(model: model, context: context, vocab: vocab, useGpu: effectiveUseGpu)
+        return ZenzContext(sharedModel: sharedModel, context: context)
     }
 
-    func reset_context() throws {
+    func resetContext() throws {
         #if (Zenzai || ZenzaiCPU) && os(Windows)
+        Self.ensureBackendsLoaded()
         if !Self.cpuBackendLoaded {
             debug("CPU backend is not loaded; Zenzai context reset will likely fail")
         }
@@ -277,425 +570,124 @@ final class ZenzContext {
         #if ZenzaiCPU
         params.offload_kqv = false
         #endif
-        let context = llama_init_from_model(self.model, params)
+        let context = llama_init_from_model(self.sharedModel.model, params)
         guard let context else {
             debug("Could not load context!")
             throw ZenzError.couldNotLoadContext
         }
         self.context = context
-        self.prevInput = []
-        self.prevPrompt = []
+        self.prevInputBySeq = [:]
+        self.prevPromptBySeq = [:]
     }
 
-    private func get_logits(tokens: [llama_token], logits_start_index: Int = 0) -> UnsafeMutablePointer<Float>? {
+    private func getLogits(tokens: [llama_token], logits_start_index: Int = 0, seqId: llama_seq_id = 0) -> UnsafeMutablePointer<Float>? {
+        let currentPrevInput = self.prevInputBySeq[seqId] ?? []
+        var effectivePrevInput = currentPrevInput
+
+        // Try to copy KV cache from the other sequence if it gives a longer prefix match.
+        let otherSeqId: llama_seq_id? = if seqId == evalSeqId {
+            inputPredictionSeqId
+        } else if seqId == inputPredictionSeqId {
+            evalSeqId
+        } else {
+            nil
+        }
+        if let otherSeqId, let otherPrevInput = self.prevInputBySeq[otherSeqId] {
+            let currentPrefix = currentPrevInput.commonPrefix(with: tokens).count
+            let otherPrefix = otherPrevInput.commonPrefix(with: tokens).count
+            if otherPrefix > currentPrefix {
+                let copiedPrefixCount = min(otherPrefix, logits_start_index)
+                if copiedPrefixCount > 0 {
+                    llama_kv_cache_seq_rm(context, seqId, 0, -1)
+                    llama_kv_cache_seq_cp(context, otherSeqId, seqId, 0, llama_pos(copiedPrefixCount))
+                    effectivePrevInput = otherPrevInput
+                }
+            }
+        }
+
         // Manage KV cache: remove entries that differ from previous input
         let prefixCacheCount: Int
         do {
-            let pos_max = llama_kv_cache_seq_pos_max(self.context, 0)
-            debug("pos max:", pos_max, "prevInput count:", self.prevInput.count, "tokens count:", tokens.count)
-            let commonTokens = self.prevInput.commonPrefix(with: tokens)
+            let pos_max = llama_kv_cache_seq_pos_max(self.context, seqId)
+            debug("pos max:", pos_max, "prevInput count:", effectivePrevInput.count, "tokens count:", tokens.count)
+            let commonTokens = effectivePrevInput.commonPrefix(with: tokens)
             // Remove KV cache from position commonTokens.count onwards to recompute divergent part
             // removed range: [llama_pos(commonTokens.count), inf)
             prefixCacheCount = min(commonTokens.count, logits_start_index)
-            llama_kv_cache_seq_rm(context, -1, llama_pos(prefixCacheCount), -1)
-            debug("new pos max:", llama_kv_cache_seq_pos_max(self.context, 0), "commonTokens:", commonTokens.count)
+            llama_kv_cache_seq_rm(context, seqId, llama_pos(prefixCacheCount), -1)
+            debug("new pos max:", llama_kv_cache_seq_pos_max(self.context, seqId), "commonTokens:", commonTokens.count)
         }
-        var batch = llama_batch_init(512, 0, 1)
-        defer { llama_batch_free(batch) }
+        self.batch.n_tokens = 0
         let n_ctx = llama_n_ctx(context)
         let n_kv_req = tokens.count + (Int(n_len) - tokens.count)
         if n_kv_req > n_ctx {
             debug("error: n_kv_req > n_ctx, the required KV cache size is not big enough")
         }
         for i in tokens.indices.dropFirst(prefixCacheCount) {
-            llama_batch_add(&batch, tokens[i], Int32(i), [0], logits: logits_start_index <= i)
+            llama_batch_add(&self.batch, tokens[i], Int32(i), [seqId], logits: logits_start_index <= i)
         }
         // 評価
-        if llama_decode(context, batch) != 0 {
+        if llama_decode(context, self.batch) != 0 {
             debug("llama_decode() failed")
             return nil
         }
         // update cached input for next call (for KV cache management)
-        self.prevInput = tokens
+        self.prevInputBySeq[seqId] = tokens
         return llama_get_logits(context)
     }
 
-    func evaluate(text: String, ignorePrompt: String = "") -> Float {
-        let tokens_list = self.tokenize(text: text, add_bos: true, add_eos: true)
-        guard let logits = self.get_logits(tokens: tokens_list) else {
-            debug("logits unavailable")
-            return .nan
-        }
-        let tokenizedPromptCount = ignorePrompt.isEmpty ? 1 : tokenize(text: ignorePrompt, add_bos: true, add_eos: false).count
-        let n_vocab = llama_vocab_n_tokens(vocab)
-
-        var sum: Float = 0
-        // 最初のプロンプト部分は無視する
-        for (i, token_id) in tokens_list.indexed().dropFirst(tokenizedPromptCount) {
-            // FIXME: there can be more efficient implementations, poossibly using Accelerate or other frameworks.
-            var log_prob: Float = 0
-            for index in ((i - 1) * Int(n_vocab)) ..< (i * Int(n_vocab)) {
-                log_prob += expf(logits[index])
-            }
-            log_prob = logf(log_prob)
-            log_prob = logits[Int((i - 1) * Int(n_vocab) + Int(token_id))] - log_prob
-            sum += log_prob
-        }
-        return sum
+    func previousEvaluationPrompt() -> String {
+        self.prevPromptBySeq[evalSeqId] ?? ""
     }
 
-    enum CandidateEvaluationResult: Sendable, Equatable, Hashable {
-        case error
-        case pass(score: Float, alternativeConstraints: [AlternativeConstraint])
-        case fixRequired(prefixConstraint: [UInt8])
-        case wholeResult(String)
-
-        struct AlternativeConstraint: Sendable, Equatable, Hashable {
-            var probabilityRatio: Float
-            var prefixConstraint: [UInt8]
-        }
+    func setPreviousEvaluationPrompt(_ prompt: String) {
+        self.prevPromptBySeq[evalSeqId] = prompt
     }
 
-    func getLearningPriority(data: DicdataElement) -> Float {
-        // 文字数の長い候補ほど優先的に適用されるようにする
-        // 積極的な複合語化の効果を期待
-        if 1 <= data.ruby.count && data.ruby.count <= 4 {
-            Float(data.ruby.count + 2)
-        } else if 5 <= data.ruby.count && data.ruby.count <= 15 {
-            Float(data.ruby.count * 2)
-        } else {
-            30
-        }
+    func normalizeForModel(_ text: String) -> String {
+        self.preprocessText(text: text)
     }
 
-    /// ピュアな貪欲法による生成を行って返す
-    func pure_greedy_decoding(leftSideContext: String, maxCount: Int = .max) -> String {
-        var prompt_tokens = self.tokenize(text: leftSideContext, add_bos: false)
-        let initial_count = prompt_tokens.count
-        let eos_token = llama_vocab_eos(vocab)
-        while prompt_tokens.count - initial_count < maxCount {
-            let startOffset = prompt_tokens.count - 1
-            guard let logits = self.get_logits(tokens: prompt_tokens, logits_start_index: startOffset) else {
-                debug("logits unavailable")
-                return ""
-            }
-            let n_vocab = llama_vocab_n_tokens(vocab)
-            let startIndex = (prompt_tokens.count - 1 - startOffset) * Int(n_vocab)
-            let endIndex = (prompt_tokens.count - startOffset) * Int(n_vocab)
-            // Min-Heapを使用してn-bestを計算
-            var max_token: llama_token = -1
-            var max_value: Float = Float.infinity * -1
-            for index in startIndex..<endIndex {
-                let token = llama_token(index - startIndex)
-                if max_value < logits[index] {
-                    max_token = token
-                    max_value = logits[index]
-                }
-            }
-            if max_token == eos_token {
-                break
-            } else {
-                prompt_tokens.append(max_token)
-            }
+    func encodeEvaluationPrompt(
+        _ prompt: String,
+        memoizationCache: ZenzaiMemoizationCache
+    ) -> [llama_token] {
+        if let cached = memoizationCache.cachedEvaluationPromptTokens(for: prompt) {
+            return cached
         }
+        let tokens = self.encode(prompt, addBOS: true, addEOS: false)
+        memoizationCache.cacheEvaluationPromptTokens(tokens, for: prompt)
+        return tokens
+    }
 
-        // Heapからソートして結果を取り出す
-        let cchars: [CChar] = prompt_tokens.dropFirst(initial_count).flatMap(self.token_to_piece)
+    func encode(_ text: String, addBOS: Bool, addEOS: Bool = false) -> [llama_token] {
+        self.tokenize(text: self.preprocessText(text: text), add_bos: addBOS, add_eos: addEOS)
+    }
+
+    func encodeRaw(_ text: String, addBOS: Bool, addEOS: Bool = false) -> [llama_token] {
+        self.tokenize(text: text, add_bos: addBOS, add_eos: addEOS)
+    }
+
+    func evaluationLogits(tokens: [llama_token], startOffset: Int) -> UnsafeMutablePointer<Float>? {
+        self.getLogits(tokens: tokens, logits_start_index: startOffset, seqId: evalSeqId)
+    }
+
+    func inputPredictionLogits(tokens: [llama_token], startOffset: Int) -> UnsafeMutablePointer<Float>? {
+        self.getLogits(tokens: tokens, logits_start_index: startOffset, seqId: inputPredictionSeqId)
+    }
+
+    var vocabSize: Int {
+        Int(llama_vocab_n_tokens(self.sharedModel.vocab))
+    }
+
+    var eosToken: llama_token {
+        llama_vocab_eos(self.sharedModel.vocab)
+    }
+
+    func decodeTokens(_ tokens: [llama_token]) -> String {
+        let cchars: [CChar] = tokens.flatMap(self.tokenToPiece)
         let data = Data(cchars.map { UInt8(bitPattern: $0) })
-        return String(data: data, encoding: .utf8) ?? "" as String
-    }
-
-    func predict_next_character(leftSideContext: String, count: Int) -> [(character: Character, value: Float)] {
-        struct NextCharacterCandidate: Comparable {
-            static func < (lhs: NextCharacterCandidate, rhs: NextCharacterCandidate) -> Bool {
-                lhs.value < rhs.value
-            }
-            var character: Character
-            var value: Float
-        }
-
-        // 文末を目指して生成するためのプロンプト
-        // \u{EE01}を停止トークンとみなせる
-        let prompt_tokens = self.tokenize(text: "\u{EE00}。\u{EE02}\(leftSideContext)", add_bos: false)
-        let startOffset = prompt_tokens.count - 1
-
-        guard let logits = self.get_logits(tokens: prompt_tokens, logits_start_index: startOffset) else {
-            debug("logits unavailable")
-            return []
-        }
-
-        let n_vocab = llama_vocab_n_tokens(vocab)
-        var exp_sum: Float = 0
-        let startIndex = (prompt_tokens.count - 1 - startOffset) * Int(n_vocab)
-        let endIndex = (prompt_tokens.count - startOffset) * Int(n_vocab)
-
-        // Min-Heapを使用してn-bestを計算
-        var minHeap: FixedSizeHeap<NextCharacterCandidate> = .init(size: count)
-        let token_to_penalty_weight: [llama_token: Float] = prompt_tokens.indexed().reduce(into: [:]) { dict, item in
-            let (index, token) = item
-            // 現在位置から遠いほど減衰させる
-            dict[token, default: 0] += 2 / Float(prompt_tokens.count - index)
-        }
-
-        for index in startIndex..<endIndex {
-            let token = llama_token(index - startIndex)
-            let repeat_penalty = Float(1.0 + token_to_penalty_weight[token, default: 0])
-            let v = expf(logits[index] / repeat_penalty)
-            exp_sum += v
-
-            let tokenPieceData = Data((token_to_piece(token: token)).map(UInt8.init))
-            let character: Character
-            if let validCharacter = String(data: tokenPieceData, encoding: .utf8), let c = validCharacter.first {
-                character = c
-            } else {
-                continue
-            }
-            minHeap.insertIfPossible(NextCharacterCandidate(character: character, value: v))
-        }
-
-        // Heapからソートして結果を取り出す
-        return minHeap.unordered.sorted { $0.value > $1.value }.map { ($0.character, $0.value / exp_sum) }
-    }
-
-    func evaluate_candidate(
-        input: String,
-        candidate: Candidate,
-        requestRichCandidates: Bool,
-        prefixConstraint: Kana2Kanji.PrefixConstraint,
-        personalizationMode: (mode: ConvertRequestOptions.ZenzaiMode.PersonalizationMode, base: EfficientNGram, personal: EfficientNGram)?,
-        versionDependentConfig: ConvertRequestOptions.ZenzaiVersionDependentMode
-    ) -> CandidateEvaluationResult {
-        debug("Evaluate", candidate)
-        // For zenz-v1 model, \u{EE00} is a token used for 'start query', and \u{EE01} is a token used for 'start answer'
-        // We assume \u{EE01}\(candidate) is always splitted into \u{EE01}_\(candidate) by zenz-v1 tokenizer
-        var userDictionaryPrompt: String = ""
-        for item in candidate.data where item.metadata.contains(.isFromUserDictionary) {
-            userDictionaryPrompt += "\(item.word)(\(item.ruby.toHiragana()))"
-        }
-        var conditions: [String] = []
-        // ユーザ辞書の内容がある場合はこれを条件に追加
-        if !userDictionaryPrompt.isEmpty {
-            conditions.append("辞書:\(userDictionaryPrompt)")
-        }
-        // プロフィールがある場合はこれを条件に追加
-        switch versionDependentConfig {
-        case .v1: break
-        case .v2(let mode):
-            if let profile = mode.profile, !profile.isEmpty {
-                let pf = profile.suffix(25)
-                conditions.append("プロフィール:\(pf)")
-            }
-        case .v3(let mode):
-            if let profile = mode.profile, !profile.isEmpty {
-                let pf = profile.suffix(25)
-                conditions.append("\u{EE03}\(pf)")
-            }
-            if let topic = mode.topic, !topic.isEmpty {
-                let tp = topic.suffix(25)
-                conditions.append("\u{EE04}\(tp)")
-            }
-            if let style = mode.style, !style.isEmpty {
-                let st = style.suffix(25)
-                conditions.append("\u{EE05}\(st)")
-            }
-            if let preference = mode.preference, !preference.isEmpty {
-                let pr = preference.suffix(25)
-                conditions.append("\u{EE06}\(pr)")
-            }
-        }
-        // 左文脈を取得
-        let leftSideContext: String = switch versionDependentConfig {
-        case .v1: ""
-        case .v2(let mode):
-            if let leftSideContext = mode.leftSideContext {
-                String(leftSideContext.suffix(mode.maxLeftSideContextLength ?? 40))
-            } else {
-                ""
-            }
-        case .v3(let mode):
-            if let leftSideContext = mode.leftSideContext {
-                String(leftSideContext.suffix(mode.maxLeftSideContextLength ?? 40))
-            } else {
-                ""
-            }
-        }
-        let inputTag = "\u{EE00}"
-        let outputTag = "\u{EE01}"
-        let contextTag = "\u{EE02}"
-        // プロンプトを作成
-        var prompt: String = switch versionDependentConfig {
-        case .v1:
-            inputTag + input + outputTag
-        case .v2:
-            if !conditions.isEmpty {
-                // 条件がemptyでない場合は「・」でつなぎ、「発言:」を末尾に追加
-                inputTag + input + contextTag + conditions.joined(separator: "・") + "・発言:\(leftSideContext)" + outputTag
-            } else if !leftSideContext.isEmpty {
-                // 条件がemptyの場合、単にleftSideContextを追加
-                inputTag + input + contextTag + leftSideContext + outputTag
-            } else {
-                // そのまま
-                inputTag + input + outputTag
-            }
-        case .v3:
-            if !leftSideContext.isEmpty {
-                // leftSideContextがEmptyでなければ下記の通り処理
-                // contextがinputに前置されるように変更された(KV-cachingの効率化のため)
-                conditions.joined(separator: "") + contextTag + leftSideContext + inputTag + input + outputTag
-            } else {
-                // そのまま
-                conditions.joined(separator: "") + inputTag + input + outputTag
-            }
-        }
-        // プロンプトの前処理を適用
-        prompt = self.preprocessText(text: prompt)
-        // Therefore, tokens = prompt_tokens + candidate_tokens is an appropriate operation.
-        let prompt_tokens = self.tokenize(text: prompt, add_bos: true, add_eos: false)
-        defer {
-            self.prevPrompt = prompt_tokens
-        }
-
-        let candidate_tokens = self.tokenize(text: self.preprocessText(text: candidate.text), add_bos: false, add_eos: false)
-        // prefixConstraintをすでに満たしているトークンを調査する
-        let addressed_tokens: [llama_token]
-        if self.prevPrompt == prompt_tokens, !requestRichCandidates {
-            var string = ""
-            for character in candidate.text {
-                let newString = string + String(character)
-                if prefixConstraint.constraint.hasPrefix(newString.utf8) {
-                    string = newString
-                } else {
-                    break
-                }
-            }
-            // addressedTokensについてはそのまま扱えばよい
-            addressed_tokens = self.tokenize(text: self.preprocessText(text: string), add_bos: false, add_eos: false)
-        } else {
-            // rich candidatesのため、logit全体を得る必要がある
-            addressed_tokens = []
-        }
-
-        let tokens = prompt_tokens + candidate_tokens
-
-        // すでにprefixConstraintを満たしている部分については、計算をしない
-        let startOffset = prompt_tokens.count - 1 + addressed_tokens.count
-        guard let logits = self.get_logits(tokens: tokens, logits_start_index: startOffset) else {
-            debug("logits unavailable")
-            return .error
-        }
-        let n_vocab = llama_vocab_n_tokens(vocab)
-        let is_learned_token: [(isLearned: Bool, priority: Float)] = Array(repeating: (false, 0), count: prompt_tokens.count) + candidate.data.flatMap {
-            // priorityは文字数にする→文字数が長いほど優先される
-            Array(repeating: ($0.metadata.contains(.isLearned), logf(getLearningPriority(data: $0))), count: self.tokenize(text: $0.word, add_bos: false).count)
-        }
-
-        var score: Float = 0
-
-        struct AlternativeHighProbToken: Comparable {
-            static func < (lhs: AlternativeHighProbToken, rhs: AlternativeHighProbToken) -> Bool {
-                lhs.probabilityRatioToMaxProb < rhs.probabilityRatioToMaxProb
-            }
-
-            var token: llama_token
-            var constraint: [UInt8]
-            // 最大probabilityに対しての割合
-            var probabilityRatioToMaxProb: Float
-        }
-
-        var altTokens = FixedSizeHeap<AlternativeHighProbToken>(size: requestRichCandidates ? 5 : 0)
-        for (i, token_id) in tokens.indexed().dropFirst(startOffset + 1) {
-            // それぞれのトークンが、一つ前の予測において最も確率の高いトークンであるかをチェックする
-            // softmaxはmaxなので、単にlogitsの中で最も大きいものを選べば良い
-            // 一方実用的にはlog_probも得ておきたい。このため、ここでは明示的にsoftmaxも計算している
-            struct TokenAndLogprob: Comparable {
-                static func < (lhs: TokenAndLogprob, rhs: TokenAndLogprob) -> Bool {
-                    lhs.logprob < rhs.logprob
-                }
-                var token: llama_token
-                var logprob: Float
-            }
-            var sumexp: Float = 0
-            let startIndex = (i - 1 - startOffset) * Int(n_vocab)
-            let endIndex = (i - startOffset) * Int(n_vocab)
-            var tokenHeap = FixedSizeHeap<TokenAndLogprob>(size: requestRichCandidates ? 3 : 1)
-            for index in startIndex ..< endIndex {
-                sumexp += expf(logits[index])
-            }
-            let logsumexp = logf(sumexp)
-
-            if let (mode, baseLM, personalLM) = personalizationMode, mode.alpha > 0 {
-                let prefix = tokens[..<i].dropFirst(prompt_tokens.count).map(Int.init)
-                let baseProb: [Float]
-                let personalProb: [Float]
-                // SwiftNgramのLMは無条件の場合エラーになるため(Unigram確率はサポートしていない)
-                if !prefix.isEmpty {
-                    baseProb = baseLM.bulkPredict(prefix).map { logf(Float($0) + 1e-7) }
-                    personalProb = personalLM.bulkPredict(prefix).map { logf(Float($0) + 1e-7) }
-                } else {
-                    baseProb = Array(repeating: 0, count: Int(n_vocab))
-                    personalProb = baseProb
-                }
-                // p = probabilityBuffer / exp_sum
-                // p' = p / p_b * p_p
-                for (i, (lpb, lpp)) in zip(0 ..< Int(n_vocab), zip(baseProb, personalProb)) {
-                    let logp = logits[startIndex + i] - logsumexp
-                    let logp_ = logp + mode.alpha * (lpp - lpb) // personalized probability
-                    tokenHeap.insertIfPossible(TokenAndLogprob(token: llama_token(i), logprob: logp_))
-                }
-            } else {
-                // p = probabilityBuffer / exp_sum
-                for i in startIndex ..< endIndex {
-                    let logp = logits[i] - logsumexp
-                    tokenHeap.insertIfPossible(TokenAndLogprob(token: llama_token(i - startIndex), logprob: logp))
-                }
-            }
-
-            guard let maxItem = tokenHeap.max else {
-                debug("Max Item could not be found for unknown reason")
-                return .error
-            }
-            // ここで最も良い候補であったかをチェックする
-            if maxItem.token != token_id {
-                if maxItem.token == llama_vocab_eos(vocab) {
-                    let cchars: [CChar] = tokens[..<i].reduce(into: []) {
-                        $0.append(contentsOf: token_to_piece(token: $1))
-                    }
-                    let data = Data(cchars.map { UInt8(bitPattern: $0) })
-                    let string: String = String(data: data, encoding: .utf8) ?? ""
-                    // 要求するべき制約を記述する
-                    let wholeResult = String(string.dropFirst(prompt.count))
-                    return .wholeResult(wholeResult)
-                } else {
-                    let actual_logp: Float = logits[startIndex + Int(token_id)] - logsumexp
-                    // 学習されたトークンであり、なおかつactual_expのある程度大きければ、学習されたトークンを優先する
-                    let preferLearnedToken = is_learned_token[i].isLearned && actual_logp + is_learned_token[i].priority > maxItem.logprob
-                    if !preferLearnedToken {
-                        // adding "\0"
-                        let cchars = tokens[..<i].reduce(into: []) {
-                            $0.append(contentsOf: token_to_piece(token: $1))
-                        } + token_to_piece(token: maxItem.token)
-                        return .fixRequired(prefixConstraint: cchars.dropFirst(prompt.utf8.count).map(UInt8.init))
-                    }
-                }
-            } else if !tokenHeap.isEmpty {
-                tokenHeap.removeMax()
-                let prefix = tokens[..<i].reduce(into: []) {
-                    $0.append(contentsOf: token_to_piece(token: $1))
-                }.dropFirst(prompt.utf8.count)
-
-                for item in tokenHeap.unordered {
-                    altTokens.insertIfPossible(
-                        AlternativeHighProbToken(
-                            token: item.token,
-                            constraint: prefix.map(UInt8.init) + token_to_piece(token: item.token).map(UInt8.init),
-                            probabilityRatioToMaxProb: expf(item.logprob - maxItem.logprob)
-                        )
-                    )
-                }
-            }
-            score += maxItem.logprob
-        }
-        return .pass(score: score, alternativeConstraints: altTokens.unordered.sorted(by: >).map {.init(probabilityRatio: $0.probabilityRatioToMaxProb, prefixConstraint: $0.constraint)})
+        return String(data: data, encoding: .utf8) ?? ""
     }
 
     private func llama_batch_add(_ batch: inout llama_batch, _ id: llama_token, _ pos: llama_pos, _ seq_ids: [llama_seq_id], logits: Bool) {
@@ -718,27 +710,27 @@ final class ZenzContext {
         let utf8Count = text.utf8.count
         let n_tokens = utf8Count + (add_bos ? 1 : 0)
         let tokens = UnsafeMutablePointer<llama_token>.allocate(capacity: n_tokens)
-        let tokenCount = llama_tokenize(vocab, text, Int32(utf8Count), tokens, Int32(n_tokens), add_bos, false)
+        let tokenCount = llama_tokenize(self.sharedModel.vocab, text, Int32(utf8Count), tokens, Int32(n_tokens), add_bos, false)
         var swiftTokens: [llama_token] = if tokenCount < 0 {
-            [llama_vocab_bos(vocab)]
+            [llama_vocab_bos(self.sharedModel.vocab)]
         } else {
             (0..<tokenCount).map {tokens[Int($0)]}
         }
         tokens.deallocate()
         if add_eos {
-            swiftTokens.append(llama_vocab_eos(vocab))
+            swiftTokens.append(llama_vocab_eos(self.sharedModel.vocab))
         }
         return swiftTokens
     }
 
     /// - note: The result does not contain null-terminator
-    private func token_to_piece(token: llama_token) -> [CChar] {
+    func tokenToPiece(token: llama_token) -> [CChar] {
         let result = UnsafeMutablePointer<Int8>.allocate(capacity: 8)
         result.initialize(repeating: Int8(0), count: 8)
         defer {
             result.deallocate()
         }
-        let nTokens = llama_token_to_piece(vocab, token, result, 8, 0, false)
+        let nTokens = llama_token_to_piece(self.sharedModel.vocab, token, result, 8, 0, false)
 
         if nTokens < 0 {
             let newResult = UnsafeMutablePointer<Int8>.allocate(capacity: Int(-nTokens))
@@ -746,7 +738,7 @@ final class ZenzContext {
             defer {
                 newResult.deallocate()
             }
-            let nNewTokens = llama_token_to_piece(vocab, token, newResult, Int32(-nTokens), 0, false)
+            let nNewTokens = llama_token_to_piece(self.sharedModel.vocab, token, newResult, Int32(-nTokens), 0, false)
             let bufferPointer: UnsafeBufferPointer<Int8> = UnsafeBufferPointer(start: newResult, count: Int(nNewTokens))
             return Array(bufferPointer)
         } else {

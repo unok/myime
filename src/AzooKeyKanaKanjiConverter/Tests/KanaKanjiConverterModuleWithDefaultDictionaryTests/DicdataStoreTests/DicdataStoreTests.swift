@@ -21,8 +21,8 @@ final class DicdataStoreTests: XCTestCase {
     func requestOptions() -> ConvertRequestOptions {
         .init(
             N_best: 5,
-            requireJapanesePrediction: true,
-            requireEnglishPrediction: false,
+            requireJapanesePrediction: .autoMix,
+            requireEnglishPrediction: .disabled,
             keyboardLanguage: .ja_JP,
             englishCandidateInRoman2KanaInput: true,
             fullWidthRomanCandidate: false,
@@ -331,6 +331,20 @@ final class DicdataStoreTests: XCTestCase {
             let result = dicdataStore.getMatchDynamicUserDict("ソンザイシナイ", state: state)
             XCTAssertEqual(result.count, 0)
         }
+    }
+
+    func testDynamicUserShortcuts() throws {
+        let dicdataStore = DicdataStore.withDefaultDictionary()
+        let dynamicShortcuts = [
+            DicdataElement(word: "変換ショートカット", ruby: "ヘンカンショートカット", cid: CIDData.固有名詞.cid, mid: MIDData.一般.mid, value: -6)
+        ]
+        let state = dicdataStore.prepareState()
+        state.importDynamicUserDictionary([], shortcuts: dynamicShortcuts)
+
+        let results = dicdataStore.getPerfectMatchedUserShortcutsDicdata(ruby: "ヘンカンショートカット", state: state)
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.word, "変換ショートカット")
+        XCTAssertTrue(results.first?.metadata.contains(.isFromUserDictionary) ?? false)
     }
 
     func testDynamicUserDictWithConversion() throws {

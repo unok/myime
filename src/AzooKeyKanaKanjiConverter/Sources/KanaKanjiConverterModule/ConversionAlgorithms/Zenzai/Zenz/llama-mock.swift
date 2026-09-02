@@ -14,6 +14,8 @@ package struct llama_context_params {
     package var n_threads: Int32
     package var n_threads_batch: Int32
     package var n_batch: Int
+    package var flash_attn: Bool
+    package var no_perf: Bool
 }
 package func llama_context_default_params() -> llama_context_params { unimplemented() }
 
@@ -39,6 +41,7 @@ package func llama_model_get_vocab(_: llama_model) -> llama_vocab? { unimplement
 package func llama_model_load_from_file(_: String, _: llama_model_params) -> llama_model? { unimplemented() }
 
 package func llama_kv_cache_seq_rm(_: llama_context, _: llama_seq_id, _: llama_pos, _: llama_pos) {}
+package func llama_kv_cache_seq_cp(_: llama_context, _: llama_seq_id, _: llama_seq_id, _: llama_pos, _: llama_pos) {}
 package func llama_kv_cache_seq_pos_max(_: llama_context, _: llama_seq_id) -> Int { unimplemented() }
 
 package struct llama_batch {
@@ -53,7 +56,7 @@ package func llama_batch_init(_: Int, _: Int, _: Int) -> llama_batch { unimpleme
 package func llama_batch_free(_: llama_batch) {}
 
 package func llama_n_ctx(_: llama_context) -> Int { unimplemented() }
-package func llama_vocab_n_tokens(_: llama_vocab) -> Int { unimplemented() }
+package func llama_vocab_n_tokens(_: llama_vocab) -> Int32 { unimplemented() }
 
 package func llama_tokenize(_: llama_model, _: String, _: Int32, _: UnsafeMutablePointer<llama_token>, _: Int32, _: Bool, _: Bool) -> Int { unimplemented() }
 package func llama_vocab_eos(_: llama_vocab) -> llama_token { unimplemented() }

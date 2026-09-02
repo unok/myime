@@ -1,5 +1,7 @@
+import OrderedCollections
+
 extension InputTables {
-    static let defaultKanaUSPieceMap: [[InputTable.KeyElement]: [InputTable.ValueElement]] = InputTables.Helper.constructPieceMap([
+    static let defaultKanaUSPieceMap = InputTables.Helper.constructPieceMap([
         // 数字キー
         "1": "ぬ",
         "2": "ふ",
@@ -13,6 +15,8 @@ extension InputTables {
         "0": "わ",
 
         // シフト列
+        "！": "ぬ",
+        "＠": "ふ",
         "＃": "ぁ",
         "＄": "ぅ",
         "％": "ぇ",
@@ -33,8 +37,19 @@ extension InputTables {
         "i": "に",
         "o": "ら",
         "p": "せ",
+        "Q": "た",
+        "W": "て",
+        "R": "す",
+        "T": "か",
+        "Y": "ん",
+        "U": "な",
+        "I": "に",
+        "O": "ら",
+        "P": "せ",
         "』": "ー",
         "」": "む",
+        // FIXME: ここは設定依存と思われる
+        "￥": "へ",
         "＼": "へ",
 
         // Shift
@@ -50,6 +65,15 @@ extension InputTables {
         "j": "ま",
         "k": "の",
         "l": "り",
+        "A": "ち",
+        "S": "と",
+        "D": "し",
+        "F": "は",
+        "G": "き",
+        "H": "く",
+        "J": "ま",
+        "K": "の",
+        "L": "り",
 
         // 文字キー（第3列）
         "z": "つ",
@@ -59,6 +83,12 @@ extension InputTables {
         "b": "こ",
         "n": "み",
         "m": "も",
+        "X": "さ",
+        "C": "そ",
+        "V": "ひ",
+        "B": "こ",
+        "N": "み",
+        "M": "も",
 
         // Shift
         "Z": "っ",
@@ -67,10 +97,12 @@ extension InputTables {
         "ー": "ほ",
         "；": "れ",
         "’": "け",
-        "、": "ね",
-        "。": "る",
-        "・": "め",
+        "、": "ね", // FIXME: when shifted, it should be "、"
+        "。": "る", // FIXME: when shifted, it should be "。"
+        "・": "め", // FIXME: when shifted, it should be "・"
         "”": "ろ",
+        "＿": "ほ",
+        "：": "れ",
 
         // Shift
         "＋": "「",
@@ -78,7 +110,6 @@ extension InputTables {
         "＜": "、",
         "＞": "。",
         "？": "・",
-
         // 濁点
         "「": "゛",
         "う「": "ゔ",

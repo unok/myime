@@ -9,12 +9,35 @@
 public import Foundation
 
 public struct ConvertRequestOptions: Sendable {
+    public enum PredictionMode: Sendable, Equatable {
+        case autoMix
+        case manualMix
+        case disabled
+
+        var isEnabled: Bool {
+            self != .disabled
+        }
+
+        var shouldMix: Bool {
+            self == .autoMix
+        }
+    }
+
+    /// 通常の変換リクエストで classic typo correction をどう扱うかの設定。
+    public enum TypoCorrectionMode: Sendable, Equatable, Hashable {
+        /// プラットフォーム既定に従います。
+        case automatic
+        /// classic typo correction を常に有効にします。
+        case enabled
+        /// typo correction を無効にします。
+        case disabled
+    }
     /// 変換リクエストに必要な設定データ
     ///
     /// - parameters:
     ///   - N_best: 変換候補の数。上位`N`件までの言語モデル上の妥当性を保証します。大きくすると計算量が増加します。
-    ///   - requireJapanesePrediction: 日本語の予測変換候補の必要性。`false`にすると、日本語の予測変換候補を出力しなくなります。
-    ///   - requireEnglishPrediction: 英語の予測変換候補の必要性。`false`にすると、英語の予測変換候補を出力しなくなります。ローマ字入力を用いた日本語入力では`false`にした方が良いでしょう。
+    ///   - requireJapanesePrediction: 日本語の予測変換候補の扱い。`.autoMix`は候補に混ぜ、`.manualMix`は`ConversionResult`に分離、`.disabled`は生成しません。
+    ///   - requireEnglishPrediction: 英語の予測変換候補の扱い。`.autoMix`は候補に混ぜ、`.manualMix`は`ConversionResult`に分離、`.disabled`は生成しません。ローマ字入力を用いた日本語入力では`.disabled`にした方が良いでしょう。
     ///   - keyboardLanguage: キーボードの言語を指定します。
     ///   - englishCandidateInRoman2KanaInput: `true`の場合、日本語ローマ字入力時に英語変換候補を出力します。`false`の場合、ローマ字入力時に英語変換候補を出力しません。
     ///   - fullWidthRomanCandidate: `true`の場合、全角英数字の変換候補が出力に含まれるようになります。
@@ -27,10 +50,11 @@ public struct ConvertRequestOptions: Sendable {
     ///   - sharedContainerURL: ユーザ辞書など、キーボード外で書き込んだ設定データの保存されているディレクトリを指定します。
     ///   - textReplacer: 予測変換のための置換機を指定します。
     ///   - specialCandidateProviders: 特殊変換を実施する変換関数を挿入します
+    ///   - experimentalZenzaiPredictiveInput: Zenzai の予測入力フォールバックを有効にします（experimental）。
+    ///   - typoCorrectionMode: 通常の変換リクエストで classic typo correction をどう扱うかを指定します。
     ///   - metadata: メタデータを指定します。詳しくは`ConvertRequestOptions.Metadata`を参照してください。
-    public init(N_best: Int = 10, needTypoCorrection: Bool? = nil, requireJapanesePrediction: Bool, requireEnglishPrediction: Bool, keyboardLanguage: KeyboardLanguage, englishCandidateInRoman2KanaInput: Bool = false, fullWidthRomanCandidate: Bool = false, halfWidthKanaCandidate: Bool = false, learningType: LearningType, maxMemoryCount: Int = 65536, shouldResetMemory: Bool = false, memoryDirectoryURL: URL, sharedContainerURL: URL, textReplacer: TextReplacer, specialCandidateProviders: [any SpecialCandidateProvider]?, zenzaiMode: ZenzaiMode = .off, preloadDictionary: Bool = false, metadata: ConvertRequestOptions.Metadata?) {
+    public init(N_best: Int = 10, requireJapanesePrediction: PredictionMode, requireEnglishPrediction: PredictionMode, keyboardLanguage: KeyboardLanguage, englishCandidateInRoman2KanaInput: Bool = false, fullWidthRomanCandidate: Bool = false, halfWidthKanaCandidate: Bool = false, learningType: LearningType, maxMemoryCount: Int = 65536, shouldResetMemory: Bool = false, memoryDirectoryURL: URL, sharedContainerURL: URL, textReplacer: TextReplacer, specialCandidateProviders: [any SpecialCandidateProvider]?, zenzaiMode: ZenzaiMode = .off, preloadDictionary: Bool = false, experimentalZenzaiPredictiveInput: Bool = false, typoCorrectionMode: TypoCorrectionMode = .automatic, metadata: ConvertRequestOptions.Metadata?) {
         self.N_best = N_best
-        self.needTypoCorrection = needTypoCorrection
         self.requireJapanesePrediction = requireJapanesePrediction
         self.requireEnglishPrediction = requireEnglishPrediction
         self.keyboardLanguage = keyboardLanguage
@@ -47,6 +71,8 @@ public struct ConvertRequestOptions: Sendable {
         self.specialCandidateProviders = specialCandidateProviders ?? KanaKanjiConverter.defaultSpecialCandidateProviders
         self.zenzaiMode = zenzaiMode
         self.preloadDictionary = preloadDictionary
+        self.experimentalZenzaiPredictiveInput = experimentalZenzaiPredictiveInput
+        self.typoCorrectionMode = typoCorrectionMode
 
         if shouldResetMemory {
             print("Warning: Passing `shouldResetMemory: true` in `ConvertRequestOptions` is deprecated. Use `KanaKanjiConverter.resetMemory` instead.")
@@ -54,10 +80,9 @@ public struct ConvertRequestOptions: Sendable {
     }
 
     public var N_best: Int
-    public var requireJapanesePrediction: Bool
-    public var requireEnglishPrediction: Bool
+    public var requireJapanesePrediction: PredictionMode
+    public var requireEnglishPrediction: PredictionMode
     public var keyboardLanguage: KeyboardLanguage
-    public var needTypoCorrection: Bool?
     // KeyboardSettingのinjection用途
     public var englishCandidateInRoman2KanaInput: Bool
     public var fullWidthRomanCandidate: Bool
@@ -74,6 +99,10 @@ public struct ConvertRequestOptions: Sendable {
     public var specialCandidateProviders: [any SpecialCandidateProvider]
     public var zenzaiMode: ZenzaiMode
     public var preloadDictionary: Bool
+    /// Enable experimental predictive input for Zenzai fallback candidates.
+    public var experimentalZenzaiPredictiveInput: Bool
+    /// 通常の変換リクエストで classic typo correction をどう扱うかの設定。
+    public var typoCorrectionMode: TypoCorrectionMode
     // メタデータ
     public var metadata: Metadata?
 
@@ -83,9 +112,8 @@ public struct ConvertRequestOptions: Sendable {
     static var `default`: Self {
         Self(
             N_best: 10,
-            needTypoCorrection: nil,
-            requireJapanesePrediction: true,
-            requireEnglishPrediction: true,
+            requireJapanesePrediction: .autoMix,
+            requireEnglishPrediction: .autoMix,
             keyboardLanguage: .ja_JP,
             englishCandidateInRoman2KanaInput: true,
             learningType: .inputAndOutput,
@@ -145,14 +173,20 @@ public struct ConvertRequestOptions: Sendable {
             style: String? = nil,
             preference: String? = nil,
             leftSideContext: String? = nil,
-            maxLeftSideContextLength: Int? = nil
+            rightSideContext: String? = nil,
+            maxLeftSideContextLength: Int? = nil,
+            maxRightSideContextLength: Int? = nil,
+            enableAlignmentSeparator: Bool = false
         ) {
             self.profile = profile
             self.topic = topic
             self.style = style
             self.preference = preference
             self.leftSideContext = leftSideContext
+            self.rightSideContext = rightSideContext
             self.maxLeftSideContextLength = maxLeftSideContextLength
+            self.maxRightSideContextLength = maxRightSideContextLength
+            self.enableAlignmentSeparator = enableAlignmentSeparator
         }
 
         /// プロフィールコンテクストを設定した場合、プロフィールを反映したプロンプトが自動的に付与されます。プロフィールは10〜20文字程度の長さにとどめることを推奨します。
@@ -165,31 +199,19 @@ public struct ConvertRequestOptions: Sendable {
         public var preference: String?
         /// 左側の文字列を文脈として与えます。
         public var leftSideContext: String?
-        /// 文脈の最大長を制約します
+        /// 右側の文字列を文脈として与えます。
+        public var rightSideContext: String?
+        /// 左文脈の最大長を制約します
         public var maxLeftSideContextLength: Int?
-    }
-
-    public enum ZenzVersion: Sendable, Equatable, Hashable {
-        case v1
-        case v2
-        case v3
+        /// 右文脈の最大長を制約します
+        public var maxRightSideContextLength: Int?
+        /// カーソル位置に応じたalignment separatorをプロンプトと候補に挿入します。
+        public var enableAlignmentSeparator: Bool
     }
 
     public enum ZenzaiVersionDependentMode: Sendable, Equatable, Hashable {
-        case v1
         case v2(ZenzaiV2DependentMode)
         case v3(ZenzaiV3DependentMode)
-
-        public var version: ZenzVersion {
-            switch self {
-            case .v1:
-                return .v1
-            case .v2:
-                return .v2
-            case .v3:
-                return .v3
-            }
-        }
     }
 
     public struct ZenzaiMode: Sendable, Equatable {
