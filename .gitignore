@@ -40,10 +40,6 @@ Thumbs.db
 # Personal settings
 .claude/
 
-# User configuration
-config.json
-userdata/
-
 # Old local directories
 # src/AzooKeyKanaKanjiConverter-local/  # Replaced by src/AzooKeyKanaKanjiConverter (subtree)
 # (swift-tokenizers は subtree 廃止済み → SwiftPM リモート依存。docs/adr/0002 参照)

@@ -1,12 +1,40 @@
 # Copy Swift Runtime DLLs to build directory
 # Usage: copy-swift-runtime.ps1 -OutputDir <dir>
 
+[CmdletBinding(DefaultParameterSetName="Copy")]
 param(
-    [Parameter(Mandatory=$true)]
-    [string]$OutputDir
+    [Parameter(Mandatory=$true, ParameterSetName="Copy", Position=0)]
+    [string]$OutputDir,
+
+    [Parameter(Mandatory=$true, ParameterSetName="List")]
+    [switch]$ListOnly
 )
 
 $ErrorActionPreference = "Continue"
+
+# DLLs to copy
+$dlls = @(
+    "swiftCore.dll",
+    "swiftCRT.dll",
+    "swiftDispatch.dll",
+    "swift_Concurrency.dll",
+    "swift_StringProcessing.dll",
+    "swift_RegexParser.dll",
+    "swiftRegexBuilder.dll",
+    "swiftWinSDK.dll",
+    "Foundation.dll",
+    "FoundationEssentials.dll",
+    "FoundationNetworking.dll",
+    "FoundationInternationalization.dll",
+    "_FoundationICU.dll",
+    "BlocksRuntime.dll",
+    "dispatch.dll"
+)
+
+if ($ListOnly) {
+    $dlls | ForEach-Object { Write-Output $_ }
+    exit 0
+}
 
 # Search paths for Swift Runtime
 $runtimeDirs = @(
@@ -71,25 +99,6 @@ Write-Host "Found Swift Runtime at: $foundRuntime"
 
 # Create output directory
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
-
-# DLLs to copy
-$dlls = @(
-    "swiftCore.dll",
-    "swiftCRT.dll",
-    "swiftDispatch.dll",
-    "swift_Concurrency.dll",
-    "swift_StringProcessing.dll",
-    "swift_RegexParser.dll",
-    "swiftRegexBuilder.dll",
-    "swiftWinSDK.dll",
-    "Foundation.dll",
-    "FoundationEssentials.dll",
-    "FoundationNetworking.dll",
-    "FoundationInternationalization.dll",
-    "_FoundationICU.dll",
-    "BlocksRuntime.dll",
-    "dispatch.dll"
-)
 
 $copied = 0
 $missing = @()

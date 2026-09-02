@@ -1,19 +1,31 @@
 # Copy llama.cpp DLLs to build and lib directories
 # Usage: copy-llama-dlls.ps1 -Arch x64|arm64 -SourceDir <dir> -BuildDir <dir>
 
+[CmdletBinding(DefaultParameterSetName="Copy")]
 param(
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory=$true, ParameterSetName="Copy", Position=0)]
     [ValidateSet("x64", "arm64")]
     [string]$Arch,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory=$false, Position=1)]
     [string]$SourceDir = "llama.cpp-build",
 
-    [Parameter(Mandatory=$false)]
-    [string]$BuildDir = "build"
+    [Parameter(Mandatory=$false, Position=2)]
+    [string]$BuildDir = "build",
+
+    [Parameter(Mandatory=$true, ParameterSetName="List")]
+    [switch]$ListOnly
 )
 
 $ErrorActionPreference = "Stop"
+
+# DLLs to copy (Vulkan is packaged as a dynamically loaded module; not loaded by default)
+$dlls = @("ggml.dll", "ggml-base.dll", "ggml-cpu.dll", "ggml-vulkan.dll", "llama.dll")
+
+if ($ListOnly) {
+    $dlls | ForEach-Object { Write-Output $_ }
+    exit 0
+}
 
 # Set directories based on architecture
 if ($Arch -eq "x64") {
@@ -31,8 +43,6 @@ $buildMarker = "$llamaCppVersion-dl-vulkan"
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 New-Item -ItemType Directory -Force -Path $libDir | Out-Null
 
-# DLLs to copy (Vulkan is packaged as a dynamically loaded module; not loaded by default)
-$dlls = @("ggml.dll", "ggml-base.dll", "ggml-cpu.dll", "ggml-vulkan.dll", "llama.dll")
 $libs = @("llama.lib", "ggml.lib", "ggml-base.lib")
 
 Write-Host "Copying llama.cpp DLLs for $Arch..."

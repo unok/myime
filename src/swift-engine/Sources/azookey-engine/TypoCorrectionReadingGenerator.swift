@@ -795,7 +795,7 @@ enum TypoCorrectionReadingGenerator {
     }
 }
 
-// テスト専用ヘルパ。internal のみで @_silgen_name エクスポートを持たないため
+// テスト専用ヘルパ。internal のみで @_cdecl エクスポートを持たないため
 // DLL の公開シンボルには影響しない。swift test と scratchpad の swiftc 直叩き
 // (-DTYPO_CORRECTION_TEST) の両方から使うため #if では囲まない
 extension TypoCorrectionReadingGenerator {

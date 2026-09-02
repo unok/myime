@@ -32,7 +32,7 @@ Mozc（C++ / TSF）をUIフレームワークとし、かな漢字変換を Azoo
 
 ## C FFI 関数一覧
 
-`src/swift-engine/Sources/azookey-engine/AzookeyEngine.swift` でエクスポート。文字列の戻り値は malloc 済みで、呼び出し側が `FreeString` で解放する。
+`src/swift-engine/Sources/azookey-engine/AzookeyEngine.swift` で `@_cdecl` を使ってエクスポート。文字列の戻り値は malloc 済みで、呼び出し側が `FreeString` で解放する。
 
 全エクスポート関数は DLL 内部のロックで排他される（Mozc 側から複数スレッドで呼ばれても安全）。
 
@@ -40,7 +40,6 @@ Mozc（C++ / TSF）をUIフレームワークとし、かな漢字変換を Azoo
 |---|---|---|
 | 初期化 | `Initialize(dictionaryPath, memoryPath) -> Int32` | KanaKanjiConverter 生成。成功=1/失敗=0。参照カウント方式（ReloadModules で新旧インスタンスが交差しても安全） |
 | | `Shutdown()` | 参照カウントを減らし、0 になったら状態クリア |
-| | `LoadConfig(configPath)` | JSON設定読み込み（辞書・メモリ・Zenzai） |
 | **変換（主経路）** | `ConvertText(key, allowLearning) -> JSON` | **単発変換API**。key（UTF-8ひらがな）の候補リストを1呼び出しで返す。Mozc の `Convert()` はこれのみ使用。`allowLearning=0` でシークレットモード時の学習を抑止 |
 | テキスト操作（補助） | `AppendText(utf8)` | ひらがなをカーソル位置に追加（`inputStyle: .direct`） |
 | | `RemoveText(count)` / `ShrinkText()` | 文字削除 |
@@ -112,6 +111,8 @@ Bazel との接続:
 - `mozc/src/MODULE.bazel` の `new_local_repository(@azookey_dlls, path="../../build/x64/release")` がステップ2-3の出力を参照
 - `bazel/BUILD.azookey_dlls.bazel` が DLL群の filegroup を定義
 - `win32/installer/BUILD.bazel` が `build_installer.py --azookey_dll_dir=...` 経由で WiX（`installer_oss_64bit.wxs`）に渡し、全 DLL を `Program Files\Mozc\` に同梱
+
+DLL 一覧の正は `scripts/ci/copy-swift-runtime.ps1` と `scripts/ci/copy-llama-dlls.ps1`。WiX 側の列挙との一致は `scripts/ci/check-dll-lists.py` が CI（PR Tests / Build x64）で検査する。
 
 CI（`.github/workflows/build-x64.yml`）は llama.cpp をソースからビルドしてキャッシュする（ビルド済み DLL の git 管理は不要 — [upstream-divergence.md](./upstream-divergence.md) 参照）。
 

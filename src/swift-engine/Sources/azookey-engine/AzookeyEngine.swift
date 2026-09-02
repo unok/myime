@@ -189,42 +189,11 @@ private func candidatesJson() -> UnsafePointer<CChar>? {
 
 // MARK: - Exported Functions
 
-@_silgen_name("LoadConfig")
-public func loadConfig(_ configPath: UnsafePointer<CChar>?) {
-    guard let configPath = configPath else { return }
-    let path = String(cString: configPath)
-
-    // Load config from JSON file
-    guard let data = FileManager.default.contents(atPath: path),
-          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-        return
-    }
-
-    engineLock.lock()
-    defer { engineLock.unlock() }
-
-    if let dictPath = json["dictionaryPath"] as? String {
-        config.dictionaryPath = dictPath
-    }
-    if let memPath = json["memoryPath"] as? String {
-        config.memoryPath = memPath
-    }
-    if let zenzaiEnabled = json["zenzaiEnabled"] as? Bool {
-        config.zenzaiEnabled = zenzaiEnabled
-    }
-    if let zenzaiLimit = json["zenzaiInferenceLimit"] as? Int {
-        config.zenzaiInferenceLimit = zenzaiLimit
-    }
-    if let zenzaiWeight = json["zenzaiWeightPath"] as? String {
-        config.zenzaiWeightPath = zenzaiWeight
-    }
-}
-
 /// Initialize the engine. Returns 1 on success, 0 on failure.
 /// 参照カウント方式: Mozc 側はコンバータインスタンスごとに Initialize/Shutdown を
 /// 呼ぶが、エンジン状態はプロセスグローバル単一のため、Engine::ReloadModules で
 /// 新旧インスタンスが入れ替わる際に旧側の Shutdown が新側を壊さないようにする。
-@_silgen_name("Initialize")
+@_cdecl("Initialize")
 public func initialize(_ dictionaryPath: UnsafePointer<CChar>?, _ memoryPath: UnsafePointer<CChar>?) -> Int32 {
     engineLock.lock()
     defer { engineLock.unlock() }
@@ -329,7 +298,7 @@ private func warmUpZenzai() {
     _ = conv.requestCandidates(text, options: getOptions(allowLearning: false))
 }
 
-@_silgen_name("Shutdown")
+@_cdecl("Shutdown")
 public func shutdown() {
     engineLock.lock()
     defer { engineLock.unlock() }
@@ -350,7 +319,7 @@ public func shutdown() {
 /// ClearText → AppendText → GetCandidates の3呼び出しと違い、1呼び出しで
 /// 完結するため呼び出し間に他スレッドの操作が割り込まない。
 /// allowLearning=0 でこのリクエストの学習を無効化 (シークレットモード)。
-@_silgen_name("ConvertText")
+@_cdecl("ConvertText")
 public func convertText(_ key: UnsafePointer<CChar>?, _ allowLearning: Int32) -> UnsafePointer<CChar>? {
     guard let key = key else { return nil }
     let keyString = String(cString: key)
@@ -372,7 +341,7 @@ public func convertText(_ key: UnsafePointer<CChar>?, _ allowLearning: Int32) ->
     return candidatesJson()
 }
 
-@_silgen_name("AppendText")
+@_cdecl("AppendText")
 public func appendText(_ input: UnsafePointer<CChar>?) {
     guard let input = input else { return }
     let inputString = String(cString: input)
@@ -382,7 +351,7 @@ public func appendText(_ input: UnsafePointer<CChar>?) {
     composingText.insertAtCursorPosition(inputString, inputStyle: .direct)
 }
 
-@_silgen_name("RemoveText")
+@_cdecl("RemoveText")
 public func removeText(_ count: Int32) {
     // 負数や0で Range 生成の fatalError を起こさないよう防御（C ABI 越しの外部入力）
     guard count > 0 else { return }
@@ -391,7 +360,7 @@ public func removeText(_ count: Int32) {
     composingText.deleteBackwardFromCursorPosition(count: Int(count))
 }
 
-@_silgen_name("MoveCursor")
+@_cdecl("MoveCursor")
 public func moveCursor(_ offset: Int32) {
     engineLock.lock()
     defer { engineLock.unlock() }
@@ -400,7 +369,7 @@ public func moveCursor(_ offset: Int32) {
     }
 }
 
-@_silgen_name("ClearText")
+@_cdecl("ClearText")
 public func clearText() {
     engineLock.lock()
     defer { engineLock.unlock() }
@@ -409,7 +378,7 @@ public func clearText() {
     currentTypoCandidates = []
 }
 
-@_silgen_name("GetComposedText")
+@_cdecl("GetComposedText")
 public func getComposedText() -> UnsafePointer<CChar>? {
     engineLock.lock()
     defer { engineLock.unlock() }
@@ -427,7 +396,7 @@ public func getComposedText() -> UnsafePointer<CChar>? {
     return UnsafePointer(_strdup(first.text))
 }
 
-@_silgen_name("GetCandidates")
+@_cdecl("GetCandidates")
 public func getCandidates() -> UnsafePointer<CChar>? {
     engineLock.lock()
     defer { engineLock.unlock() }
@@ -440,7 +409,7 @@ public func getCandidates() -> UnsafePointer<CChar>? {
     return candidatesJson()
 }
 
-@_silgen_name("SelectCandidate")
+@_cdecl("SelectCandidate")
 public func selectCandidate(_ index: Int32) {
     engineLock.lock()
     defer { engineLock.unlock() }
@@ -459,14 +428,14 @@ public func selectCandidate(_ index: Int32) {
     currentTypoCandidates = []
 }
 
-@_silgen_name("ShrinkText")
+@_cdecl("ShrinkText")
 public func shrinkText() {
     engineLock.lock()
     defer { engineLock.unlock() }
     composingText.deleteForwardFromCursorPosition(count: 1)
 }
 
-@_silgen_name("SetZenzaiEnabled")
+@_cdecl("SetZenzaiEnabled")
 public func setZenzaiEnabled(_ enabled: Bool) {
     engineLock.lock()
     defer { engineLock.unlock() }
@@ -474,7 +443,7 @@ public func setZenzaiEnabled(_ enabled: Bool) {
     scheduleZenzaiWarmUpIfNeeded()
 }
 
-@_silgen_name("SetZenzaiUseGpu")
+@_cdecl("SetZenzaiUseGpu")
 public func setZenzaiUseGpu(_ enabled: Bool) {
     engineLock.lock()
     defer { engineLock.unlock() }
@@ -482,14 +451,14 @@ public func setZenzaiUseGpu(_ enabled: Bool) {
     scheduleZenzaiWarmUpIfNeeded()
 }
 
-@_silgen_name("SetZenzaiInferenceLimit")
+@_cdecl("SetZenzaiInferenceLimit")
 public func setZenzaiInferenceLimit(_ limit: Int32) {
     engineLock.lock()
     defer { engineLock.unlock() }
     config.zenzaiInferenceLimit = Int(limit)
 }
 
-@_silgen_name("SetZenzaiWeightPath")
+@_cdecl("SetZenzaiWeightPath")
 public func setZenzaiWeightPath(_ path: UnsafePointer<CChar>?) {
     guard let path = path else { return }
     engineLock.lock()
@@ -498,21 +467,21 @@ public func setZenzaiWeightPath(_ path: UnsafePointer<CChar>?) {
     scheduleZenzaiWarmUpIfNeeded()
 }
 
-@_silgen_name("SetTypoCorrectionBudget")
+@_cdecl("SetTypoCorrectionBudget")
 public func setTypoCorrectionBudget(_ budget: Int32) {
     engineLock.lock()
     defer { engineLock.unlock() }
     typoConversionBudget = budget > 0 ? Int(budget) : defaultTypoConversionBudget
 }
 
-@_silgen_name("SetTypoCorrectionEnabled")
+@_cdecl("SetTypoCorrectionEnabled")
 public func setTypoCorrectionEnabled(_ enabled: Bool) {
     engineLock.lock()
     defer { engineLock.unlock() }
     config.typoCorrectionEnabled = enabled
 }
 
-@_silgen_name("SetTypoCorrectionUseAi")
+@_cdecl("SetTypoCorrectionUseAi")
 public func setTypoCorrectionUseAi(_ enabled: Bool) {
     engineLock.lock()
     defer { engineLock.unlock() }
@@ -536,7 +505,7 @@ public func setUserDictionary(_ json: UnsafePointer<CChar>?) -> Int32 {
     return 1
 }
 
-@_silgen_name("GetZenzaiStatus")
+@_cdecl("GetZenzaiStatus")
 public func getZenzaiStatus() -> UnsafePointer<CChar>? {
     engineLock.lock()
     defer { engineLock.unlock() }
@@ -573,7 +542,7 @@ public func getZenzaiStatus() -> UnsafePointer<CChar>? {
     return UnsafePointer(_strdup(jsonString))
 }
 
-@_silgen_name("FreeString")
+@_cdecl("FreeString")
 public func freeString(_ str: UnsafePointer<CChar>?) {
     guard let str = str else { return }
     free(UnsafeMutablePointer(mutating: str))
