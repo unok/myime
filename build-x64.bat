@@ -1,6 +1,8 @@
 @echo off
 setlocal EnableDelayedExpansion
 
+if /i "%~1"=="--mozc-only" set "MOZC_ONLY=1"
+
 :: ==============================================
 :: MyIME Build Script - x64
 :: ==============================================
@@ -208,6 +210,8 @@ echo Setting up Visual Studio environment...
 call "%VS_PATH%\VC\Auxiliary\Build\vcvarsall.bat" x64 >nul 2>&1
 
 :: Change to Swift directory
+if defined MOZC_ONLY goto :use_existing_swift_dll
+
 pushd "%SWIFT_DIR%"
 
 :: Build Swift package (Zenzai is enabled via Package.swift dependency)
@@ -254,6 +258,19 @@ popd
 
 echo Swift x64 DLL build completed.
 echo.
+goto :swift_dll_ready
+
+:use_existing_swift_dll
+echo Skipping Swift DLL build (--mozc-only).
+if not exist "%OUTPUT_DIR%\azookey-engine.dll" (
+    echo [ERROR] Prebuilt azookey-engine.dll not found: %OUTPUT_DIR%\azookey-engine.dll
+    echo Run build-x64.bat without --mozc-only first.
+    goto :fail
+)
+echo Using existing: %OUTPUT_DIR%\azookey-engine.dll
+echo.
+
+:swift_dll_ready
 
 :: ==============================================
 :: Step 3: Copy llama.cpp dependencies

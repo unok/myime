@@ -22,13 +22,13 @@ Windows向け日本語IME。MozcのUIフレームワーク（fork）とAzooKey�
 
 `Mozc_x64.msi` を管理者権限で実行する。MSI は [docs/build.md](docs/build.md) の手順でビルドするか、GitHub Actions「Build x64」の成果物を使う。
 
-インストール時に Zenzai のモデル（約500MB）が自動ダウンロードされる。失敗してもインストールは続行し、モデルは後から追加できる（下記「Zenzai」参照）。アンインストールは Windows の「設定」→「アプリ」→「Mozc」から。
+インストール時に Zenzai のモデル（約70MB）が自動ダウンロードされる。失敗してもインストールは続行し、モデルは後から追加できる（下記「Zenzai」参照）。アンインストールは Windows の「設定」→「アプリ」→「Mozc」から。
 
 ## 標準の IME にない機能
 
 ### Zenzai（LLM かな漢字変換）
 
-llama.cpp 上のニューラル言語モデル zenz-v3.1-small（約500MB）で変換候補を生成・評価する。モデルファイルがあり設定がオン（既定）なら自動で有効になり、なければ通常の辞書変換だけで動く。推論は既定で CPU。設定で Vulkan GPU に切り替えられる（対応 GPU とドライバが必要）。
+llama.cpp 上のニューラル言語モデル zenz-v3.2-small（約70MB）で変換候補を生成・評価する。モデルファイルがあり設定がオン（既定）なら自動で有効になり、なければ通常の辞書変換だけで動く。推論は既定で CPU。設定で Vulkan GPU に切り替えられる（対応 GPU とドライバが必要）。
 
 モデルの入手方法は3つ:
 
@@ -39,7 +39,7 @@ llama.cpp 上のニューラル言語モデル zenz-v3.1-small（約500MB）で�
   ```cmd
   mkdir "%LOCALAPPDATA%\Mozc\models"
   curl -L -o "%LOCALAPPDATA%\Mozc\models\ggml-model-Q5_K_M.gguf" ^
-    "https://huggingface.co/Miwa-Keita/zenz-v3.1-small-gguf/resolve/main/ggml-model-Q5_K_M.gguf"
+    "https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf/resolve/c67e03e07d215c869f591b274c1631170d3e11fe/ggml-model-Q5_K_M.gguf"
   ```
 
 ### タイポ補正
@@ -110,6 +110,14 @@ reg add HKCU\Software\Mozc /v PassthroughImeOffKeys /t REG_SZ /d "Ctrl+T Alt+B C
 - 起動済みのアプリは再起動するまで古い DLL を使い続ける。動作確認は新しく開いたアプリで行う
 
 ビルド関連のトラブルは [docs/build.md](docs/build.md) を参照。
+
+## 既知の問題
+
+- ARM64 版は提供していない（棚上げ中。[docs/upstream-divergence.md](docs/upstream-divergence.md) 参照）
+- 確定取消（Ctrl+Backspace）で絵文字などサロゲートペアを含む文字列が半分だけ消える場合がある。`TF_ES_SYNC` が失敗するアプリ（MS Word、コンソール系）のフォールバック経路のみで発生する。[Issue #17](https://github.com/unok/myime/issues/17) 参照
+- CI 版 MSI とローカルビルド版 MSI は上書きインストールできない（Qt の出自が異なるため）。切り替えるときは完全アンインストール後にインストールする（[docs/build.md](docs/build.md) 参照）
+
+進行中の最新化作業は [Issue #56](https://github.com/unok/myime/issues/56) を参照。
 
 ## ドキュメント
 
