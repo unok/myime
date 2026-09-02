@@ -89,7 +89,7 @@ echo ----------------------------------------------
 
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 if not exist "%VSWHERE%" (
-    echo   Visual Studio:  NOT FOUND (vswhere.exe not found)
+    echo   Visual Studio:  NOT FOUND ^(vswhere.exe not found^)
 ) else (
     for /f "usebackq delims=" %%i in (`"%VSWHERE%" -latest -products * -property displayName 2^>nul`) do (
         echo   Edition:        %%i
@@ -137,6 +137,7 @@ echo.
 
 :: ==============================================
 :: Swift Runtime
+:: DLL lists are sourced from scripts/ci/copy-*.ps1.
 :: ==============================================
 echo [Swift Runtime]
 echo ----------------------------------------------
@@ -146,16 +147,21 @@ for %%p in ("%LocalAppData%\Programs\Swift\Runtimes" "%ProgramFiles%\Swift\Runti
     if not defined SWIFT_RUNTIME_FOUND (
         if exist "%%~p" (
             for /d %%t in ("%%~p\*") do (
-                if exist "%%t\usr\bin\swiftCore.dll" (
-                    set "SWIFT_RUNTIME_FOUND=%%t\usr\bin"
-                    echo   Path:           !SWIFT_RUNTIME_FOUND!
-                    echo   Runtime DLLs:
-                    for %%d in (swiftCore.dll swiftCRT.dll swiftDispatch.dll swift_Concurrency.dll swiftWinSDK.dll Foundation.dll FoundationEssentials.dll FoundationInternationalization.dll _FoundationICU.dll BlocksRuntime.dll dispatch.dll) do (
-                        if exist "!SWIFT_RUNTIME_FOUND!\%%d" (
-                            echo     [OK] %%d
-                        ) else (
-                            echo     [--] %%d
+                if not defined SWIFT_RUNTIME_FOUND (
+                    if exist "%%t\usr\bin\swiftCore.dll" (
+                        set "SWIFT_RUNTIME_FOUND=%%t\usr\bin"
+                        echo   Path:           !SWIFT_RUNTIME_FOUND!
+                        echo   Runtime DLLs:
+                        set "DLL_LIST_COUNT=0"
+                        for /f "usebackq delims=" %%d in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%scripts\ci\copy-swift-runtime.ps1" -ListOnly`) do (
+                            set /a DLL_LIST_COUNT+=1
+                            if exist "!SWIFT_RUNTIME_FOUND!\%%d" (
+                                echo     [OK] %%d
+                            ) else (
+                                echo     [--] %%d
+                            )
                         )
+                        if "!DLL_LIST_COUNT!"=="0" echo     [!!] failed to read DLL list from copy-swift-runtime.ps1
                     )
                 )
             )
@@ -182,7 +188,7 @@ if exist "%MOZC_SRC%\third_party\qt\bin\Qt6Core.dll" (
         for /f "tokens=*" %%v in ('"%MOZC_SRC%\third_party\qt\bin\qmake6.exe" -query QT_VERSION 2^>^&1') do echo   Qt Version:     %%v
     )
 ) else (
-    echo   Qt:             NOT FOUND (run build script to download)
+    echo   Qt:             NOT FOUND ^(run build script to download^)
 )
 
 echo.
@@ -223,13 +229,16 @@ echo ----------------------------------------------
 set "LLAMA_DIR=%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows"
 if exist "%LLAMA_DIR%" (
     echo   Path: %LLAMA_DIR%
-    for %%f in (ggml.dll ggml-base.dll ggml-cpu.dll ggml-vulkan.dll llama.dll) do (
+    set "DLL_LIST_COUNT=0"
+    for /f "usebackq delims=" %%f in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%scripts\ci\copy-llama-dlls.ps1" -ListOnly`) do (
+        set /a DLL_LIST_COUNT+=1
         if exist "%LLAMA_DIR%\%%f" (
             echo     [OK] %%f
         ) else (
             echo     [--] %%f
         )
     )
+    if "!DLL_LIST_COUNT!"=="0" echo     [!!] failed to read DLL list from copy-llama-dlls.ps1
 ) else (
     echo   llama.cpp DLLs: NOT FOUND
 )
@@ -244,7 +253,7 @@ echo ----------------------------------------------
 
 :: ハードコードすると MODULE.bazel 更新時に乖離して嘘をつくため、動的に抽出する
 if exist "%~dp0mozc\src\MODULE.bazel" (
-    powershell -NoProfile -Command "$t = Get-Content -Raw '%~dp0mozc\src\MODULE.bazel'; foreach ($m in [regex]::Matches($t, 'bazel_dep\(\s*name\s*=\s*\"([^\"]+)\"\s*,\s*version\s*=\s*\"([^\"]+)\"')) { '  {0,-20} {1}' -f ($m.Groups[1].Value + ':'), $m.Groups[2].Value }"
+    powershell -NoProfile -Command "$t = Get-Content -Raw '%~dp0mozc\src\MODULE.bazel'; foreach ($m in [regex]::Matches($t, 'bazel_dep\(\s*name\s*=\s*\x22([^\x22]+)\x22\s*,\s*version\s*=\s*\x22([^\x22]+)\x22')) { '  {0,-20} {1}' -f ($m.Groups[1].Value + ':'), $m.Groups[2].Value }"
 ) else (
     echo   [N/A] mozc\src\MODULE.bazel not found - run: git submodule update --init
 )

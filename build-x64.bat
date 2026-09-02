@@ -279,9 +279,10 @@ echo [Step 3/4] Copying llama.cpp dependencies...
 echo.
 
 set "LLAMA_BUILD=%ROOT_DIR%src\AzooKeyKanaKanjiConverter\lib\windows"
+:: DLL 一覧は scripts\ci\copy-llama-dlls.ps1 に一元化（括弧ブロック内の :: は cmd の構文を壊すため外に置く）
 if exist "%LLAMA_BUILD%" (
     echo Copying x64 llama.cpp DLLs...
-    for %%f in (ggml.dll ggml-base.dll ggml-cpu.dll ggml-vulkan.dll llama.dll) do (
+    for /f "usebackq delims=" %%f in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%scripts\ci\copy-llama-dlls.ps1" -ListOnly`) do (
         if exist "%LLAMA_BUILD%\%%f" (
             copy /y "%LLAMA_BUILD%\%%f" "%OUTPUT_DIR%\" >nul
             echo   Copied: %%f

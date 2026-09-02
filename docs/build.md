@@ -44,7 +44,7 @@ myime/
 | `dev-reinstall.bat` | 既存 Mozc を完全アンインストールしてからクリーン再インストール（開発用） |
 | `download-zenzai-model.bat` | Zenzai モデルをリポジトリの `models/` へダウンロード |
 | `setup-dictionaries.bat` | AzooKey 辞書サブモジュールの確認・配置 |
-| `version_info.bat` | ビルド環境のツール・ライブラリのバージョンを表示 |
+| `version_info.bat` | ビルド環境のツール・ライブラリのバージョンを表示。DLL 一覧は `scripts/ci/copy-*.ps1` を参照 |
 
 ## インストールと開発時の再インストール
 

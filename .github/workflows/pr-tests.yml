@@ -36,6 +36,10 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Check DLL lists are consistent
+        shell: pwsh
+        run: python scripts/ci/check-dll-lists.py
+
       - name: Setup Swift
         uses: SwiftyLab/setup-swift@38f54a76b70d989321de9dc7c840618c08cf56e9 # v1.14.0
         with:
