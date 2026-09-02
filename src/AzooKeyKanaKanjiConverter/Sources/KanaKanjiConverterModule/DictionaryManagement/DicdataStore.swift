@@ -213,10 +213,13 @@ public final class DicdataStore {
     ///   - state: ストア状態
     /// - Returns: 完全一致の`DicdataElement`配列
     func getPerfectMatchedUserShortcutsDicdata(ruby: some StringProtocol, state: DicdataStoreState) -> [DicdataElement] {
-        let charIDs = ruby.map(self.character2charId(_:))
+        let rubyString = String(ruby)
+        var results = state.dynamicUserShortcuts.filter { $0.ruby == rubyString }
+        let charIDs = rubyString.map(self.character2charId(_:))
         let indices = self.perfectMatchingSearch(query: "user_shortcuts", charIDs: charIDs, state: state)
-        guard !indices.isEmpty else { return [] }
-        return self.getDicdataFromLoudstxt3(identifier: "user_shortcuts", indices: indices, state: state)
+        guard !indices.isEmpty else { return results }
+        results.append(contentsOf: self.getDicdataFromLoudstxt3(identifier: "user_shortcuts", indices: indices, state: state))
+        return results
     }
 
     private struct UnifiedGenerator {
@@ -650,7 +653,7 @@ public final class DicdataStore {
     ///   - head: 辞書を引く文字列
     /// - Returns:
     ///   発見されたデータのリスト。
-    func getPredictionLOUDSDicdata(key: some StringProtocol, state: DicdataStoreState) -> [DicdataElement] {
+    func getPredictionLOUDSDicdata(key: some StringProtocol, state: DicdataStoreState, includeExactMatch: Bool = false) -> [DicdataElement] {
         let count = key.count
         if count == .zero {
             return []
@@ -668,16 +671,25 @@ public final class DicdataStore {
         } else {
             Int.max
         }
-        let prefixIndices = self.startingFromPrefixSearch(query: first, charIDs: charIDs, depth: depth, maxCount: maxCount, state: state)
+        var prefixIndices = self.startingFromPrefixSearch(query: first, charIDs: charIDs, depth: depth, maxCount: maxCount, state: state)
+        if includeExactMatch, prefixIndices.count < maxCount {
+            prefixIndices.append(contentsOf: self.perfectMatchingSearch(query: first, charIDs: charIDs, state: state))
+        }
 
         result.append(
             contentsOf: self.getDicdataFromLoudstxt3(identifier: first, indices: Set(prefixIndices), state: state)
                 .filter { Self.predictionUsable[$0.rcid] }
         )
-        let userDictIndices = self.startingFromPrefixSearch(query: "user", charIDs: charIDs, maxCount: maxCount, state: state)
+        var userDictIndices = self.startingFromPrefixSearch(query: "user", charIDs: charIDs, maxCount: maxCount, state: state)
+        if includeExactMatch, userDictIndices.count < maxCount {
+            userDictIndices.append(contentsOf: self.perfectMatchingSearch(query: "user", charIDs: charIDs, state: state))
+        }
         result.append(contentsOf: self.getDicdataFromLoudstxt3(identifier: "user", indices: Set(consume userDictIndices), state: state))
         if state.learningMemoryManager.enabled {
-            let memoryDictIndices = self.startingFromPrefixSearch(query: "memory", charIDs: charIDs, maxCount: maxCount, state: state)
+            var memoryDictIndices = self.startingFromPrefixSearch(query: "memory", charIDs: charIDs, maxCount: maxCount, state: state)
+            if includeExactMatch, memoryDictIndices.count < maxCount {
+                memoryDictIndices.append(contentsOf: self.perfectMatchingSearch(query: "memory", charIDs: charIDs, state: state))
+            }
             result.append(contentsOf: self.getDicdataFromLoudstxt3(identifier: "memory", indices: Set(consume memoryDictIndices), state: state))
             result.append(contentsOf: state.learningMemoryManager.temporaryPrefixMatch(charIDs: charIDs))
         }

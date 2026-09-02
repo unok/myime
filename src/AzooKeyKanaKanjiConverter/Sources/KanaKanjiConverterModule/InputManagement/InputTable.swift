@@ -1,3 +1,4 @@
+import OrderedCollections
 import SwiftUtils
 private indirect enum TrieNode {
     struct State: Sendable, Equatable, Hashable {
@@ -5,7 +6,7 @@ private indirect enum TrieNode {
     }
 
     struct KeySignature: Sendable, Equatable, Hashable {
-        var intention: Character?
+        var input: Character
         var modifiers: Set<InputPiece.Modifier>
     }
 
@@ -40,8 +41,8 @@ private indirect enum TrieNode {
                     next = separatorChild ?? .node(output: nil)
                     next.add(reversedKey: rest, output: output)
                     separatorChild = next
-                case .key(let intention, let modifiers):
-                    let sig = KeySignature(intention: intention, modifiers: modifiers)
+                case .key(let intention, let input, let modifiers):
+                    let sig = KeySignature(input: input, modifiers: modifiers)
                     next = keyChildren[sig] ?? .node(output: nil)
                     next.add(reversedKey: rest, output: output)
                     keyChildren[sig] = next
@@ -72,7 +73,7 @@ private indirect enum TrieNode {
                     // it as an invalid match.
                     switch state.resolvedAny1 {
                     case .character(let c): c
-                    case .key(let intention, _): intention
+                    case .key(let intention, let input, _): intention ?? input
                     case .compositionSeparator, nil: nil
                     }
                 }
@@ -99,7 +100,12 @@ public struct InputTable: Sendable {
         case any1
     }
 
+    @_disfavoredOverload
     public init(baseMapping: [[KeyElement]: [ValueElement]]) {
+        self.init(baseMapping: .init(uniqueKeysWithValues: baseMapping))
+    }
+
+    init(baseMapping: OrderedDictionary<[KeyElement], [ValueElement]>) {
         self.baseMapping = baseMapping
         self.unstableSuffixes = baseMapping.keys.flatMapSet { pieces in
             pieces.indices.map { i in
@@ -137,7 +143,7 @@ public struct InputTable: Sendable {
         self.maxUnstableSuffixLength = self.unstableSuffixes.map { $0.count }.max() ?? 0
     }
 
-    let baseMapping: [[KeyElement]: [ValueElement]]
+    let baseMapping: OrderedDictionary<[KeyElement], [ValueElement]>
     let unstableSuffixes: Set<[Character]>
     // Fast bound to avoid scanning entire set when checking suffixes
     let maxUnstableSuffixLength: Int
@@ -156,10 +162,10 @@ public struct InputTable: Sendable {
         switch node { case .node(_, _, let separatorChild, _, _): return separatorChild }
     }
 
-    private static func childKey(of node: TrieNode, intention: Character?, modifiers: Set<InputPiece.Modifier>) -> TrieNode? {
+    private static func childKey(of node: TrieNode, input: Character, modifiers: Set<InputPiece.Modifier>) -> TrieNode? {
         switch node {
         case .node(_, _, _, _, let keyChildren):
-            return keyChildren[.init(intention: intention, modifiers: modifiers)]
+            return keyChildren[.init(input: input, modifiers: modifiers)]
         }
     }
 
@@ -180,8 +186,7 @@ public struct InputTable: Sendable {
         }
         var best: (node: TrieNode, state: TrieNode.State, depth: Int, any1: Int, keyExact: Int)?
 
-        @inline(__always) func
-        better(_ cand: (depth: Int, any1: Int, keyExact: Int), than cur: (depth: Int, any1: Int, keyExact: Int)?) -> Bool {
+        @inline(__always) func better(_ cand: (depth: Int, any1: Int, keyExact: Int), than cur: (depth: Int, any1: Int, keyExact: Int)?) -> Bool {
             guard let cur else {
                 return true
             }
@@ -226,12 +231,13 @@ public struct InputTable: Sendable {
                 if let next = childSeparator(of: top.node) {
                     consider(next, top.state, top.depth + 1, top.any1, top.keyExact, &stack)
                 }
-            case .key(let intention, let modifiers):
-                // push fallback first, then exact key (LIFO → key explored first)
-                if let c = intention, let next = childCharacter(of: top.node, c) {
+            case .key(let intention, let input, let modifiers):
+                let ch = intention ?? input
+                // Prefer character rule on actual input (B), then exact key rule.
+                if let next = childCharacter(of: top.node, ch) {
                     consider(next, top.state, top.depth + 1, top.any1, top.keyExact, &stack)
                 }
-                if let next = childKey(of: top.node, intention: intention, modifiers: modifiers) {
+                if let next = childKey(of: top.node, input: ch, modifiers: modifiers) {
                     consider(next, top.state, top.depth + 1, top.any1, top.keyExact + 1, &stack)
                 }
             }
@@ -287,10 +293,8 @@ public struct InputTable: Sendable {
             buffer.append(ch)
         case .compositionSeparator:
             break
-        case .key(let intention, _):
-            if let ch = intention {
-                buffer.append(ch)
-            }
+        case .key(let intention, let input, _):
+            buffer.append(intention ?? input)
         }
         return 0
     }
@@ -301,7 +305,7 @@ public extension InputTable {
         case lastInputWins
     }
     init(tables: [InputTable], order: Ordering) {
-        var map: [[KeyElement]: [ValueElement]] = [:]
+        var map: OrderedDictionary<[KeyElement], [ValueElement]> = [:]
         switch order {
         case .lastInputWins:
             for table in tables {

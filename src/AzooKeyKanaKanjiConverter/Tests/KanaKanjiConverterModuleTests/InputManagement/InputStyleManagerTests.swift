@@ -5,7 +5,7 @@ final class InputStyleManagerTests: XCTestCase {
     func testCustomTableLoading() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("custom.tsv")
         try "a\tあ\nka\tか\n".write(to: url, atomically: true, encoding: .utf8)
-        let table = InputStyleManager.shared.table(for: .custom(url))
+        let table = try InputStyleManager.loadTable(from: url)
         XCTAssertEqual(table.applied(currentText: [], added: .character("a")), Array("あ"))
         XCTAssertEqual(table.applied(currentText: ["k"], added: .character("a")), Array("か"))
     }
@@ -13,7 +13,7 @@ final class InputStyleManagerTests: XCTestCase {
     func testCustomTableLoadingWithBlankLines() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("custom.tsv")
         try "a\tあ\n\n\nka\tか\n".write(to: url, atomically: true, encoding: .utf8)
-        let table = InputStyleManager.shared.table(for: .custom(url))
+        let table = try InputStyleManager.loadTable(from: url)
         XCTAssertEqual(table.applied(currentText: [], added: .character("a")), Array("あ"))
         XCTAssertEqual(table.applied(currentText: ["k"], added: .character("a")), Array("か"))
     }
@@ -21,7 +21,7 @@ final class InputStyleManagerTests: XCTestCase {
     func testCustomTableLoadingWithCommentLines() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("custom.tsv")
         try "a\tあ\n# here is comment\nka\tか\n".write(to: url, atomically: true, encoding: .utf8)
-        let table = InputStyleManager.shared.table(for: .custom(url))
+        let table = try InputStyleManager.loadTable(from: url)
         XCTAssertEqual(table.applied(currentText: [], added: .character("a")), Array("あ"))
         XCTAssertEqual(table.applied(currentText: ["k"], added: .character("a")), Array("か"))
     }
@@ -34,7 +34,7 @@ final class InputStyleManagerTests: XCTestCase {
             "{lbracket}{rbracket}\t{}"
         ].joined(separator: "\n")
         try lines.write(to: url, atomically: true, encoding: .utf8)
-        let table = InputStyleManager.shared.table(for: .custom(url))
+        let table = try InputStyleManager.loadTable(from: url)
         // n<any> -> ん<any>
         XCTAssertEqual(table.applied(currentText: ["n"], added: .character("a")), Array("んa"))
         // n followed by end-of-text -> ん
@@ -45,7 +45,7 @@ final class InputStyleManagerTests: XCTestCase {
     func testTableRegisteration() throws {
         InputStyleManager.registerInputStyle(table: InputTable(baseMapping: [
             [.piece(.character("k")), .piece(.character("a"))]: [.character("か")]
-        ]), for: "か")
+        ] as Dictionary), for: "か")
         var c = ComposingText()
         c.insertAtCursorPosition([.init(character: "k", inputStyle: .mapped(id: .tableName("か")))])
         c.insertAtCursorPosition([.init(character: "a", inputStyle: .mapped(id: .tableName("か")))])

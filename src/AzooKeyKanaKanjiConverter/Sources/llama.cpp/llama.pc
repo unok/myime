@@ -1,7 +1,7 @@
 prefix=${pcfiledir}/../..
 exec_prefix=${prefix}
 libdir=${exec_prefix}/lib/windows
-includedir=${pcfiledir}
+includedir=${pcfiledir}/include
 
 Name: llama
 Description: LLaMA C++ library

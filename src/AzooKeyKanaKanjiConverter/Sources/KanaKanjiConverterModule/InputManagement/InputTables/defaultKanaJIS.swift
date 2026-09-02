@@ -1,5 +1,7 @@
+import OrderedCollections
+
 extension InputTables {
-    static let defaultKanaJISPieceMap: [[InputTable.KeyElement]: [InputTable.ValueElement]] = InputTables.Helper.constructPieceMap([
+    static let defaultKanaJISPieceMap = InputTables.Helper.constructPieceMap([
         // 数字キー
         "1": "ぬ",
         "2": "ふ",
@@ -33,6 +35,15 @@ extension InputTables {
         "i": "に",
         "o": "ら",
         "p": "せ",
+        "Q": "た",
+        "W": "て",
+        "R": "す",
+        "T": "か",
+        "Y": "ん",
+        "U": "な",
+        "I": "に",
+        "O": "ら",
+        "P": "せ",
 
         // Shift
         "E": "ぃ",
@@ -47,6 +58,15 @@ extension InputTables {
         "j": "ま",
         "k": "の",
         "l": "り",
+        "A": "ち",
+        "S": "と",
+        "D": "し",
+        "F": "は",
+        "G": "き",
+        "H": "く",
+        "J": "ま",
+        "K": "の",
+        "L": "り",
 
         // 文字キー（第3列）
         "z": "つ",
@@ -56,6 +76,12 @@ extension InputTables {
         "b": "こ",
         "n": "み",
         "m": "も",
+        "X": "さ",
+        "C": "そ",
+        "V": "ひ",
+        "B": "こ",
+        "N": "み",
+        "M": "も",
 
         // Shift
         "Z": "っ",
@@ -63,16 +89,24 @@ extension InputTables {
         // 記号キー
         "ー": "ほ",
         "＾": "へ",
+        "！": "ぬ",
         "；": "れ",
         "：": "け",
+        "＋": "れ",
+        "＝": "ほ",
         "、": "ね",
         "。": "る",
         "・": "め",
         "＿": "ろ",
         "」": "む",
+        "”": "ふ",
+        "〜": "へ",
+        "＊": "け",
+        "｜": "ー",
         // FIXME: ここは設定依存と思われる
         "￥": "ー",
         "＼": "ー",
+        "｀": "゛",
 
         // Shift
         "『": "「",
@@ -118,6 +152,6 @@ extension InputTables {
         "ほ「": "ぽ"
     ], additionalMapping: [
         [.piece(.compositionSeparator)]: [],
-        [.piece(.key(intention: "0", modifiers: [.shift]))]: [.character("を")]
+        [.piece(.key(intention: "0", input: "0", modifiers: [.shift]))]: [.character("を")]
     ])
 }

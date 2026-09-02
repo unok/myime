@@ -225,6 +225,9 @@ struct LongTermLearningMemory {
             let count = Int(loudstxtData[0 ..< 2].toArray(of: UInt16.self)[0])
             let indices = loudstxtData[2 ..< 2 + 4 * count].toArray(of: UInt32.self)
             for i in 0 ..< count {
+                guard metadataOffset < ltMetadata.endIndex else {
+                    break
+                }
                 // メタデータの読み取り
                 // 1byteで項目数
                 let itemCount = Int(ltMetadata[metadataOffset ..< metadataOffset + 1].toArray(of: UInt8.self)[0])
@@ -445,6 +448,10 @@ struct TemporalLearningMemoryTrie {
     fileprivate var nodes = [Node()]
     fileprivate var dicdata: [DicdataElement] = []
     fileprivate var metadata: [MetadataElement] = []
+
+    var isEmpty: Bool {
+        self.dicdata.isEmpty
+    }
 
     /// 同じノードにあることがわかっているデータを一括で追加する場面で利用する関数
     /// 主にマージ時の利用を想定
@@ -845,11 +852,16 @@ final class LearningManager {
         self.memoryCollapsed = LongTermLearningMemory.memoryCollapsed(directoryURL: memoryURL)
     }
 
-    func save() {
+    @discardableResult
+    func save() -> Bool {
         guard self.config.learningType.needUpdateMemory,
               let memoryURL = config.memoryURL else {
             debug(#function, "config.learningType=\(self.config.learningType as _?)", "skip memory update")
-            return
+            return false
+        }
+        guard !self.temporaryMemory.isEmpty else {
+            debug(#function, "skip because there is no pending memory")
+            return false
         }
         do {
             try LongTermLearningMemory.merge(tempTrie: self.temporaryMemory, directoryURL: memoryURL, maxMemoryCount: self.config.maxMemoryCount, char2UInt8: char2UInt8)
@@ -861,6 +873,7 @@ final class LearningManager {
         }
         // 状態を更新する
         self.memoryCollapsed = LongTermLearningMemory.memoryCollapsed(directoryURL: memoryURL)
+        return true
     }
 
     func resetMemory() {

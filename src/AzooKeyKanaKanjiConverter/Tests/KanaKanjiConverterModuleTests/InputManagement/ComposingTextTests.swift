@@ -7,6 +7,7 @@
 //
 
 @testable import KanaKanjiConverterModule
+internal import OrderedCollections
 import XCTest
 
 final class ComposingTextTests: XCTestCase {
@@ -235,10 +236,13 @@ final class ComposingTextTests: XCTestCase {
         }
         // カスタム (危険なケース)
         do {
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("custom_delete1.tsv")
-            try "o\tおは\nおはy\tおはよう".write(to: url, atomically: true, encoding: .utf8) // カスタムテーブルを保存
+            let table = InputTable(baseMapping: [
+                [.piece(.character("o"))]: [.character("お"), .character("は")],
+                [.piece(.character("お")), .piece(.character("は")), .piece(.character("y"))]: [.character("お"), .character("は"), .character("よ"), .character("う")]
+            ])
+            InputStyleManager.registerInputStyle(table: table, for: "denowb")
             var c = ComposingText()
-            sequentialInput(&c, sequence: "oy", inputStyle: .mapped(id: .custom(url))) // おはよう|
+            sequentialInput(&c, sequence: "oy", inputStyle: .mapped(id: .tableName("denowb"))) // おはよう|
             _ = c.moveCursorFromCursorPosition(count: -3) // お|はよう
             // 「は」を消す
             c.deleteForwardFromCursorPosition(count: 1)   // お|よう
@@ -253,15 +257,20 @@ final class ComposingTextTests: XCTestCase {
         }
         // カスタム (循環を含むケース)
         do {
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("custom_delete2.tsv")
-            try "a\tあ\ne\tえ\nあi\tい\nいu\tあ".write(to: url, atomically: true, encoding: .utf8) // カスタムテーブルを保存
+            let table = InputTable(baseMapping: [
+                [.piece(.character("a"))]: [.character("あ")],
+                [.piece(.character("e"))]: [.character("え")],
+                [.piece(.character("あ")), .piece(.character("i"))]: [.character("い")],
+                [.piece(.character("い")), .piece(.character("u"))]: [.character("あ")]
+            ])
+            InputStyleManager.registerInputStyle(table: table, for: "custom_delete2")
             var c = ComposingText()
-            sequentialInput(&c, sequence: "eaiu", inputStyle: .mapped(id: .custom(url))) // えあ|
+            sequentialInput(&c, sequence: "eaiu", inputStyle: .mapped(id: .tableName("custom_delete2"))) // えあ|
             _ = c.moveCursorFromCursorPosition(count: -1) // え|あ
             // 「あ」を消す
             c.deleteForwardFromCursorPosition(count: 1) // え|
             XCTAssertEqual(c.input, [
-                ComposingText.InputElement(character: "e", inputStyle: .mapped(id: .custom(url)))
+                ComposingText.InputElement(character: "e", inputStyle: .mapped(id: .tableName("custom_delete2")))
             ])
             XCTAssertEqual(c.convertTarget, "え")
             XCTAssertEqual(c.convertTargetCursorPosition, 1)
@@ -395,10 +404,15 @@ final class ComposingTextTests: XCTestCase {
         }
         // カスタム (循環を含むケース)
         do {
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("custom_indexmap.tsv")
-            try "a\tあ\ni\tい\nあいu\tあ\ne\tえ".write(to: url, atomically: true, encoding: .utf8) // カスタムテーブルを保存
+            let table = InputTable(baseMapping: [
+                [.piece(.character("a"))]: [.character("あ")],
+                [.piece(.character("i"))]: [.character("い")],
+                [.piece(.character("あ")), .piece(.character("い")), .piece(.character("u"))]: [.character("あ")],
+                [.piece(.character("e"))]: [.character("え")]
+            ])
+            InputStyleManager.registerInputStyle(table: table, for: "custom_indexmap_aiaiue")
             var c = ComposingText()
-            sequentialInput(&c, sequence: "aiuaiue", inputStyle: .mapped(id: .custom(url)))
+            sequentialInput(&c, sequence: "aiuaiue", inputStyle: .mapped(id: .tableName("custom_indexmap_aiaiue")))
             let map = c.inputIndexToSurfaceIndexMap()
 
             XCTAssertEqual(map[0], 0)     // ""
@@ -415,7 +429,7 @@ final class ComposingTextTests: XCTestCase {
             InputStyleManager.registerInputStyle(table: InputTable(baseMapping: [
                 [.piece(.character("k")), .piece(.character("i"))]: [],
                 [.piece(.character("a"))]: [.character("あ")]
-            ]), for: "test-empty-ki")
+            ] as Dictionary), for: "test-empty-ki")
             var c = ComposingText()
             sequentialInput(&c, sequence: "ki", inputStyle: .mapped(id: .tableName("test-empty-ki")))
             XCTAssertEqual(c.convertTarget, "")
