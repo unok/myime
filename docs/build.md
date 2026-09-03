@@ -80,10 +80,10 @@ CI（Build x64）と同じ、全件通る組み合わせ:
 
 ```cmd
 cd mozc\src
-bazelisk test --config=oss_windows --spawn_strategy=local --test_env=MYIME_HERMETIC_TEST=1 --test_env=MYIME_AZOOKEY_DLL_DIR=%CD%\..\..\build\x64\release //converter:azookey_candidate_parser_test //converter:azookey_user_dictionary_test //session:session_handler_test //session:session_test
+bazelisk test --config=oss_windows --spawn_strategy=local --test_env=MYIME_HERMETIC_TEST=1 --test_env=MYIME_AZOOKEY_DLL_DIR=%CD%\..\..\build\x64\release //converter:azookey_candidate_parser_test //converter:azookey_user_dictionary_test //session:session_handler_test //session:session_test //session:session_handler_myime_scenario_test
 ```
 
-upstream のシナリオテストは任意実行（現状は失敗が残る。下記）:
+`session_handler_myime_scenario_test` は AzooKey 向けのシナリオ集（#51）。一覧は `data/test/session/scenario/myime/scenario_list.txt` で、upstream のシナリオのうち AzooKey でも通るものは直接参照し、Mozc 辞書・文節分割前提で失敗する 15 件は `myime/` 配下の書き換え版（先頭コメントに変更点と AzooKey の実挙動を記録）を使う。upstream がシナリオを追加すると一覧との網羅性テストが落ちるので、そのとき `scenario_list.txt` に追記する。upstream のシナリオテストは任意実行（AzooKey では失敗が残る。下記）:
 
 ```cmd
 bazelisk test --config=oss_windows --spawn_strategy=local --test_env=MYIME_HERMETIC_TEST=1 --test_env=MYIME_AZOOKEY_DLL_DIR=%CD%\..\..\build\x64\release //session:session_handler_scenario_test
@@ -91,7 +91,7 @@ bazelisk test --config=oss_windows --spawn_strategy=local --test_env=MYIME_HERME
 
 Git Bash から実行する場合は `MSYS_NO_PATHCONV=1` を付けないと `//session:` が `/session:` に書き換わる。
 
-2026-09-02 時点の実測: `session_test` は全件通過、`session_handler_scenario_test` は 66 合格 / 30 失敗（15 シナリオ）。失敗はすべて Mozc の辞書・文節分割を前提にした期待値（`宗号する`、`東京タワー`、`中ノ` の 3 文節など）で、AzooKey エンジンでは成り立たない。除外リスト化・myime 版シナリオ・CI 外のどれにするかは #51 のコメントで判断待ち。
+2026-09-02 時点の実測: `session_test` は全件通過、upstream の `session_handler_scenario_test` は 66 合格 / 30 失敗（15 シナリオ）。失敗はすべて Mozc の辞書・文節分割を前提にした期待値（`宗号する`、`東京タワー`、`中ノ` の 3 文節など）で、AzooKey エンジンでは成り立たない。myime 版シナリオ集で判明した AzooKey の挙動（漢字・ひらがなとも再変換で別表記が出ない、履歴セグメントの有無で候補集合が変わらない、文節履歴は長い合成内の候補順位に反映されない、部分バリアント候補が出ない）は各シナリオの先頭コメントに記録してある。
 
 ### ローカルの Qt を CI と同じ削減ビルドに揃える
 
@@ -122,7 +122,7 @@ git commit -m "Update mozc submodule"
 | ワークフロー | トリガー | 内容 |
 |---|---|---|
 | PR Tests | pull_request | Swift DLL ビルド + swift test + Bazel の主要ターゲット（`azookey_candidate_parser_test` を含む DLL 非依存テスト）の build/test（MSI なし、実測 26〜37 分（2026-08）） |
-| Build x64 | master への push / 手動実行 | フル MSI ビルド（成果物 `Mozc_x64` をダウンロード可能）。DLL ビルド後に swift test と Python 回帰テスト（`scripts/tests/typo_*.py`）、MSI ビルド後にエンジン DLL 有りの Mozc テスト（`session_test` / `session_handler_test` / `azookey_*_test`）を実行する（#51） |
+| Build x64 | master への push / 手動実行 | フル MSI ビルド（成果物 `Mozc_x64` をダウンロード可能）。DLL ビルド後に swift test と Python 回帰テスト（`scripts/tests/typo_*.py`）、MSI ビルド後にエンジン DLL 有りの Mozc テスト（`session_test` / `session_handler_test` / `session_handler_myime_scenario_test` / `azookey_*_test`）を実行する（#51） |
 
 `**.md`・`docs/**` だけの変更ではどちらも走らない。キャッシュの保存は master（Build x64）だけが行い、PR は復元のみ。PR 側でも保存すると 1GB 超の bazel-disk キャッシュが PR ごとに積み上がり、上限 10GB の LRU で Qt / llama のキャッシュが追い出されて master のビルドが 40分 → 1時間20分超に悪化する（2026-08-03 実測）。
 
