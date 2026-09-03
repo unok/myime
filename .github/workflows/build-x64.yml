@@ -41,6 +41,10 @@ jobs:
         shell: pwsh
         run: python scripts/ci/check-dll-lists.py
 
+      - name: Check IPADIC table is consistent
+        shell: pwsh
+        run: python scripts/ci/check-ipadic-table.py
+
       - name: Setup Swift
         uses: SwiftyLab/setup-swift@38f54a76b70d989321de9dc7c840618c08cf56e9 # v1.14.0
         with:
@@ -164,7 +168,7 @@ jobs:
           Set-Location src/swift-engine
           swift test -c release
 
-      - name: Run engine regression tests (typo correction)
+      - name: Run engine regression tests (typo correction, user dictionary)
         shell: pwsh
         env:
           # テストは日本語を出力する。Windows ランナーの既定 stdout（cp1252）だと
@@ -175,6 +179,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "typo_conversion_test.py failed" }
           python scripts/tests/typo_clean_sweep_test.py
           if ($LASTEXITCODE -ne 0) { throw "typo_clean_sweep_test.py failed" }
+          python scripts/tests/user_dictionary_test.py
+          if ($LASTEXITCODE -ne 0) { throw "user_dictionary_test.py failed" }
 
       # Build Mozc
       - name: Download Qt source

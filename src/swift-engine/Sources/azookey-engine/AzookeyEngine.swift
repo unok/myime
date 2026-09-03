@@ -59,10 +59,10 @@ private enum DynamicUserDictionaryCID {
     static let sahenNoun = 1283     // 名詞,サ変接続
 }
 
-/// Maps the stable categories sent by Mozc to AzooKey dictionary attributes.
-/// Categories for which AzooKey does not expose a dedicated CID use the
-/// general-noun CID so that the entry remains usable across dictionary updates.
-private func dynamicUserDictionaryPos(for category: String) -> DynamicUserDictionaryPos {
+/// Maps the legacy stable categories sent by Mozc to AzooKey dictionary attributes.
+private func legacyDynamicUserDictionaryPos(
+    for category: String
+) -> DynamicUserDictionaryPos? {
     let general = DynamicUserDictionaryPos(
         cid: CIDData.一般名詞.cid, mid: MIDData.一般.mid, value: -5)
     switch category {
@@ -91,8 +91,35 @@ private func dynamicUserDictionaryPos(for category: String) -> DynamicUserDictio
     case "noun":
         return general
     default:
-        return general
+        return nil
     }
+}
+
+/// Resolves either a legacy category or the first six IPADIC left-id features.
+private func dynamicUserDictionaryPos(for pos: String) -> DynamicUserDictionaryPos {
+    if let legacy = legacyDynamicUserDictionaryPos(for: pos) {
+        return legacy
+    }
+
+    let mid: Int
+    if pos.hasPrefix("名詞,固有名詞,人名,姓,") {
+        mid = MIDData.人名姓.mid
+    } else if pos.hasPrefix("名詞,固有名詞,人名,名,") {
+        mid = MIDData.人名名.mid
+    } else if pos.hasPrefix("名詞,固有名詞,組織,") {
+        mid = MIDData.組織.mid
+    } else if pos.hasPrefix("名詞,数,") {
+        mid = MIDData.数.mid
+    } else if pos.hasPrefix("記号,アルファベット,") {
+        mid = MIDData.英単語.mid
+    } else {
+        mid = MIDData.一般.mid
+    }
+
+    return DynamicUserDictionaryPos(
+        cid: IpadicCidTable.featureToCid[pos] ?? CIDData.一般名詞.cid,
+        mid: mid,
+        value: pos.hasPrefix("記号,") ? -8 : -5)
 }
 
 func decodeDynamicUserDictionary(_ json: String) throws -> [DicdataElement] {

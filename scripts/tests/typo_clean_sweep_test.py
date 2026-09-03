@@ -51,6 +51,13 @@ CLEAN_SENTENCES = [
     "こんしゅうまつはいえにいます",
 ]
 
+SHORT_CLEAN_WORDS = [
+    "きょう", "きのう", "かいしゃ", "せんせい", "かぞく",
+    "りんご", "みかん", "じかん", "とうきょう", "べんきょう",
+    "しけん", "けんこう", "つかう", "つくる", "わかる",
+    "ごはん", "さとう", "おちゃ", "でんしゃ", "じてんしゃ",
+]
+
 
 def load_engine():
     if not DLL_PATH.exists():
@@ -111,9 +118,18 @@ def main():
                 if typos:
                     failures += 1
                     print(f"FAIL: b{budget} {reading} に補正候補が混入: {typos}")
+            for reading in SHORT_CLEAN_WORDS:
+                candidates = convert(engine, reading)
+                typos = [c["text"] for c in candidates if c.get("typoCorrected") is True]
+                if typos:
+                    failures += 1
+                    print(f"FAIL: b{budget} short {reading} に補正候補が混入: {typos}")
 
         if failures == 0:
-            print(f"PASS: typo clean-sentence sweep ({len(CLEAN_SENTENCES)}文 x 予算2種)")
+            print(
+                "PASS: typo clean sweep "
+                f"({len(CLEAN_SENTENCES)}文 + {len(SHORT_CLEAN_WORDS)}短語) x 予算2種"
+            )
             return 0
         return 1
     finally:

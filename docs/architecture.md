@@ -149,7 +149,9 @@ CI（`.github/workflows/build-x64.yml`）は llama.cpp をソースからビル�
 
 Mozc ユーザー辞書（user_dictionary.db）を正本とし、AzooKey へは一方向反映する（[ADR-0003](./adr/0003-mozc-user-dictionary-as-source-of-truth.md)）。用語は CONTEXT.md「ユーザー辞書と単語登録」節を参照。
 
-**反映経路（Phase 1）**: エンジン初期化時と Reload 時（単語登録ダイアログの保存が `client_->Reload()` を呼ぶ）に、`converter/azookey_user_dictionary.cc` が db を直接ロードして JSON 化し、DLL の `SetUserDictionary` へ全量置換でプッシュ → Swift 側で `importDynamicUserDictionary`（メモリ上・非永続）。品詞は C++ 側で十数種のカテゴリ文字列に落とし、Swift 側で CID/MID/コストへ変換。未知品詞は普通名詞。抑制単語と NO_POS は対象外。`SetUserDictionary` を持たない旧 DLL では null チェックでスキップ。
+**反映経路（Phase 1）**: エンジン初期化時と Reload 時（単語登録ダイアログの保存が `client_->Reload()` を呼ぶ）に、`converter/azookey_user_dictionary.cc` が db を直接ロードして JSON 化し、DLL の `SetUserDictionary` へ全量置換でプッシュ → Swift 側で `importDynamicUserDictionary`（メモリ上・非永続）。JSON の `pos` には IPADIC left-id 定義の1〜6列目をカンマ結合した素性文字列を渡し、Swift 側で CID/MID/コストへ変換する。旧カテゴリ文字列も互換のため受け付け、未知の素性文字列は普通名詞にフォールバックする。動詞・形容詞は活用形ごとに6〜14エントリへ展開されるため、動詞中心の辞書ではエントリ数が語数の数倍になる。抑制単語と NO_POS は対象外。`SetUserDictionary` を持たない旧 DLL では null チェックでスキップ。
+
+全量置換のコストは `scripts/bench/user_dictionary_push_bench.py` で計測できる。2026-09-03 の実測（Swift 6.3.3、Zenzai 無効、IPADIC 素性の pos）は 1,000 件 14 ms、10,000 件 144 ms（旧カテゴリ文字列では 50,000 件 537 ms）で、初期化時と Reload 時にしか走らないため差分同期は入れていない（#55）。辞書が大きいと変換 1 回の時間も伸びる（50,000 件で 20〜50 ms。AzooKey 側の動的辞書が線形走査のため）。
 
 **辞書登録候補（Phase 2）**: `rewriter/word_register_rewriter.cc` が予測窓・変換窓の各セグメント末尾に【辞書登録】（`COMMAND_CANDIDATE` + 新 Command `LAUNCH_WORD_REGISTER_DIALOG`）を注入。モバイル（mixed_conversion）・predictor 内部変換（`used_in_predictor_realtime_conversion`）・空キー・候補ゼロには注入しない。選択時は全経路（SELECT/SUBMIT/数字キー/サジェスト commit）で `MaybeLaunchWordRegisterCandidate()` が確定を抑止して composition を取り消し、`Output.launch_tool_mode=WORD_REGISTER_DIALOG` と読み（`launch_tool_arg`、予測窓=入力全体、変換窓=フォーカス文節）を返す。TSF（`tip_edit_session_impl.cc` → `HandleToolOutput`）が読みを環境変数に設定して `mozc_tool --mode=word_register_dialog` を起動（ダイアログ側は無改修で macOS と同じ環境変数を読む）。Ctrl+F7（入力前状態）でも起動可。
 
