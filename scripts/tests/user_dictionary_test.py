@@ -1,6 +1,7 @@
 import ctypes
 import json
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -57,7 +58,8 @@ def contains_text(candidates, expected):
 
 def main():
     engine = load_engine()
-    memory_path = tempfile.mkdtemp(prefix="azookey-user-dictionary-test-").encode("utf-8")
+    memory_dir = tempfile.mkdtemp(prefix="azookey-user-dictionary-test-")
+    memory_path = memory_dir.encode("utf-8")
 
     if engine.Initialize(b"", memory_path) != 1:
         print("FAIL: Initialize failed")
@@ -116,6 +118,7 @@ def main():
         return 1
     finally:
         engine.Shutdown()
+        shutil.rmtree(memory_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":
