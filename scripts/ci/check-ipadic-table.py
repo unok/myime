@@ -21,8 +21,15 @@ CHECKED_IN = (
 )
 
 
+def normalize_newlines(data: bytes) -> bytes:
+    # Git on the Windows CI runner may check files out with CRLF (core.autocrlf), and
+    # the submodule can use different attributes from the main repository. Compare
+    # content, not line endings.
+    return data.replace(b"\r\n", b"\n")
+
+
 def sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(normalize_newlines(path.read_bytes())).hexdigest()
 
 
 def main() -> int:
@@ -48,7 +55,7 @@ def main() -> int:
         failed = True
         print("ERROR: IPADIC table generator failed.", file=sys.stderr)
         sys.stderr.buffer.write(process.stderr)
-    elif process.stdout != CHECKED_IN.read_bytes():
+    elif normalize_newlines(process.stdout) != normalize_newlines(CHECKED_IN.read_bytes()):
         failed = True
         print("ERROR: IpadicCidTable.swift is stale.", file=sys.stderr)
         print(
