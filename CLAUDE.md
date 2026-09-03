@@ -8,7 +8,7 @@ Windows向け日本語IME。MozcのUIフレームワークとAzooKeyのかな漢
 
 ### 必要環境
 - Windows 10/11 (x64)
-- Swift 6.2.1+
+- Swift 6.3.3+
 - Visual Studio 2022 (C++ workload)
 - Bazelisk
 - Python 3.x
@@ -59,7 +59,8 @@ git subtree push --prefix=src/AzooKeyKanaKanjiConverter https://github.com/unok/
 
 ※ swift-tokenizers は 2026-06 に subtree を廃止（docs/adr/0002 参照）。現在は SwiftPM のリモート依存:
 - `unok/swift-tokenizers` の `windows-upstream-patch` ブランチ（upstream `huggingface/swift-transformers` + Windowsパッチ）
-- `unok/swift-huggingface` の `windows-patch` ブランチ（FileLockスタブ・fnmatchシム等 約70行）
+- `unok/swift-huggingface` の `windows-patch` ブランチ（FileLockスタブ・fnmatchシム等 約70行。依存 EventSource は `unok/EventSource` `windows-patch` を指す）
+- `unok/EventSource` の `windows-patch` ブランチ（Swift 6.3.x の swift-frontend クラッシュ回避 3 行。docs/upstream-divergence.md §3 参照）
 
 ### Mozc fork について
 - **origin**: `https://github.com/unok/mozc.git` (自分のfork)

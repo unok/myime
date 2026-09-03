@@ -9,7 +9,7 @@ on:
       - "docs/**"
 
 env:
-  SWIFT_VERSION: "6.2.1"
+  SWIFT_VERSION: "6.3.3"
 
 jobs:
   test:
@@ -84,9 +84,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: src/swift-engine/.build
-          key: swift-pm-windows-x64-${{ hashFiles('src/swift-engine/Package.swift', 'src/swift-engine/Package.resolved') }}
+          key: swift-pm-windows-x64-${{ env.SWIFT_VERSION }}-${{ hashFiles('src/swift-engine/Package.swift', 'src/swift-engine/Package.resolved') }}
           restore-keys: |
-            swift-pm-windows-x64-
+            swift-pm-windows-x64-${{ env.SWIFT_VERSION }}-
 
       - name: Restore llama.cpp build cache
         id: cache-llama

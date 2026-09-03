@@ -101,7 +101,7 @@ Mozc（C++ / TSF）をUIフレームワークとし、かな漢字変換を Azoo
 
 `build-x64.bat` の4ステップ:
 
-1. **依存チェック**: Swift 6.2.1+ / VS2022 / Bazelisk / Windows SDK / llama.cpp ライブラリ（`src/AzooKeyKanaKanjiConverter/lib/windows/`、なければ `scripts/ci/build-llama-cpp.bat` でソースビルド）
+1. **依存チェック**: Swift 6.3.3+ / VS2022 / Bazelisk / Windows SDK / llama.cpp ライブラリ（`src/AzooKeyKanaKanjiConverter/lib/windows/`、なければ `scripts/ci/build-llama-cpp.bat` でソースビルド）
 2. **Swift DLL ビルド**: `swift build -c release` → `azookey-engine.dll` + Swift Runtime DLL群 + リソースバンドル（辞書データ）を `build/x64/release/` へコピー
 3. **llama.cpp DLL コピー**: `ggml*.dll`, `llama.dll` 等を同上へ
 4. **Mozc ビルド**: `bazelisk build --config=oss_windows //win32/installer:installer_x64` → `bazel-bin/win32/installer/Mozc_x64.msi`

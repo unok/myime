@@ -11,7 +11,8 @@ fork / subtree が upstream に対して持つパッチの一覧と、各パッ�
 | mozc（`unok/mozc` `patch-myime-next`） | 43 コミット（+4,708/−27、67 ファイル） | **0**（2026-09-02 に `4b1953a93`（2026-08-27）へ rebase 済み） | 定期追従。次回の衝突箇所は §1 |
 | AzooKeyKanaKanjiConverter（`unok/AzooKeyKanaKanjiConverter` `windows-llama-patch`） | 2 コミット（vendored ヘッダ + Windows 対応、Swift 4 ファイル） | **0**（2026-09-02 に upstream main `93766c4`（2026-08-02）の上へ移植し直し） | 定期追従。移植の要点は §2 |
 | swift-tokenizers（`unok/swift-tokenizers` `windows-upstream-patch`） | 2 コミット | **0** | 定期追従 |
-| swift-huggingface（`unok/swift-huggingface` `windows-patch`） | 1 コミット | **0** | 定期追従 |
+| swift-huggingface（`unok/swift-huggingface` `windows-patch`） | 2 コミット | **0** | 定期追従 |
+| EventSource（`unok/EventSource` `windows-patch`） | 1 コミット（3 行） | **0**（基点 1.5.1） | Swift 6.3.x のコンパイラ不具合の回避。upstream で解消したら廃止 |
 
 ## 1. mozc fork（`patch-myime-next`）
 
@@ -105,6 +106,7 @@ fork 版にあった「モデルとコンテキストを ZenzContext が直接�
 - AzooKey の Package.swift → `unok/swift-tokenizers` の `windows-upstream-patch` ブランチ。基点は `huggingface/swift-transformers` main（1.3.3 以降）。差分は 2 コミット（fnmatch シム、swift-huggingface フォークへの依存差し替え）
 - その依存 → `unok/swift-huggingface` の `windows-patch` ブランチ。基点は `huggingface/swift-huggingface` main（0.10.0）。差分は 1 コミット（FileLock スタブ、fnmatch シム、cachesDirectory シム）
 - 旧ブランチ `windows-swift621-patch` は履歴として fork に残置
+- swift-huggingface の依存 EventSource → `unok/EventSource` の `windows-patch` ブランチ（基点 `mattt/EventSource` 1.5.1）。差分は 1 コミット 3 行: `waitForLinuxCompletion()` の `CheckedContinuation` を `UnsafeContinuation` に置換。Windows の swift-frontend 6.3.3（+Asserts）が同関数の IR 生成で `Cannot dereference a null Type!` のアサーションで落ちるための回避で、6.2.1 では不要だった（2026-09-03、#50）。upstream の EventSource か Swift 側で解消したら fork を廃止し `mattt/EventSource` に戻す
 
 両 fork は 2026-09-02 に upstream 先端へ rebase 済み。swift-tokenizers の衝突は `Package.swift` の swift-jinja 2.4.2 行のみで、旧先端は `windows-upstream-patch-backup-20260902` に保存した。swift-huggingface は衝突なしで、旧先端は `windows-patch-backup-20260902` に保存した。
 

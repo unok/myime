@@ -43,35 +43,67 @@ $runtimeDirs = @(
     "C:\Library\Swift\Runtimes"
 )
 
+$swift = Get-Command swift.exe -ErrorAction SilentlyContinue
+$toolchainVersion = $null
+
+if ($swift -and $swift.Source -match '[\\/]Toolchains[\\/]([^\\/]+)\+Asserts[\\/]usr[\\/]bin[\\/]swift\.exe$') {
+    $toolchainVersion = $Matches[1]
+} elseif ($swift) {
+    $versionOutput = (& $swift.Source --version 2>&1 | Out-String)
+    if ($versionOutput -match 'Swift version\s+([0-9]+(?:\.[0-9]+){1,2})') {
+        $toolchainVersion = $Matches[1]
+    }
+}
+
+if (-not $toolchainVersion) {
+    Write-Warning "Could not determine the Swift toolchain version; using the first available runtime."
+}
+
 $foundRuntime = $null
+$foundRuntimeVersion = $null
 $searched = @()
 
-foreach ($dir in $runtimeDirs) {
-    $searched += $dir
-    if (Test-Path $dir) {
-        $subdirs = Get-ChildItem -Path $dir -Directory -ErrorAction SilentlyContinue
-        foreach ($subdir in $subdirs) {
-            $candidate = Join-Path $subdir.FullName "usr\bin\swiftCore.dll"
-            if (Test-Path $candidate) {
-                $foundRuntime = Join-Path $subdir.FullName "usr\bin"
-                break
-            }
+# Prefer the runtime whose version matches the active Swift toolchain.
+if ($toolchainVersion) {
+    foreach ($dir in $runtimeDirs) {
+        $candidateDir = Join-Path (Join-Path $dir $toolchainVersion) "usr\bin"
+        $searched += $candidateDir
+        if (Test-Path (Join-Path $candidateDir "swiftCore.dll")) {
+            $foundRuntime = $candidateDir
+            $foundRuntimeVersion = $toolchainVersion
+            break
         }
     }
-    if ($foundRuntime) { break }
+}
+
+# If the toolchain version is unknown, preserve the previous search order.
+if (-not $foundRuntime -and -not $toolchainVersion) {
+    foreach ($dir in $runtimeDirs) {
+        $searched += $dir
+        if (Test-Path $dir) {
+            $subdirs = Get-ChildItem -Path $dir -Directory -ErrorAction SilentlyContinue
+            foreach ($subdir in $subdirs) {
+                $candidate = Join-Path $subdir.FullName "usr\bin\swiftCore.dll"
+                if (Test-Path $candidate) {
+                    $foundRuntime = Join-Path $subdir.FullName "usr\bin"
+                    $foundRuntimeVersion = $subdir.Name
+                    break
+                }
+            }
+        }
+        if ($foundRuntime) { break }
+    }
 }
 
 # Fallback 1: swiftCore.dll next to swift.exe on PATH
 # (setup-swift がツールキャッシュから復元した場合、インストーラ形式の
 #  %LOCALAPPDATA%\Programs\Swift\Runtimes が存在しないことがある)
-if (-not $foundRuntime) {
-    $swift = Get-Command swift.exe -ErrorAction SilentlyContinue
-    if ($swift) {
-        $bin = Split-Path $swift.Source
-        $searched += $bin
-        if (Test-Path (Join-Path $bin "swiftCore.dll")) {
-            $foundRuntime = $bin
-        }
+if (-not $foundRuntime -and $swift) {
+    $bin = Split-Path $swift.Source
+    $searched += $bin
+    if (Test-Path (Join-Path $bin "swiftCore.dll")) {
+        $foundRuntime = $bin
+        $foundRuntimeVersion = $toolchainVersion
     }
 }
 
@@ -81,11 +113,47 @@ if (-not $foundRuntime -and $env:SDKROOT) {
     $runtimesRoot = Join-Path $root "Runtimes"
     $searched += $runtimesRoot
     if (Test-Path $runtimesRoot) {
-        $hit = Get-ChildItem -Path $runtimesRoot -Directory -ErrorAction SilentlyContinue |
-            ForEach-Object { Join-Path $_.FullName "usr\bin" } |
-            Where-Object { Test-Path (Join-Path $_ "swiftCore.dll") } |
-            Select-Object -First 1
-        if ($hit) { $foundRuntime = $hit }
+        if ($toolchainVersion) {
+            $candidateDir = Join-Path (Join-Path $runtimesRoot $toolchainVersion) "usr\bin"
+            $searched += $candidateDir
+            if (Test-Path (Join-Path $candidateDir "swiftCore.dll")) {
+                $foundRuntime = $candidateDir
+                $foundRuntimeVersion = $toolchainVersion
+            }
+        }
+        if (-not $foundRuntime) {
+            $hit = Get-ChildItem -Path $runtimesRoot -Directory -ErrorAction SilentlyContinue |
+                ForEach-Object {
+                    $runtimeBin = Join-Path $_.FullName "usr\bin"
+                    if (Test-Path (Join-Path $runtimeBin "swiftCore.dll")) {
+                        [PSCustomObject]@{ Path = $runtimeBin; Version = $_.Name }
+                    }
+                } |
+                Select-Object -First 1
+            if ($hit) {
+                $foundRuntime = $hit.Path
+                $foundRuntimeVersion = $hit.Version
+            }
+        }
+    }
+}
+
+# Final fallback: use another installed runtime if no matching one was found.
+if (-not $foundRuntime -and $toolchainVersion) {
+    foreach ($dir in $runtimeDirs) {
+        $searched += $dir
+        if (Test-Path $dir) {
+            $subdirs = Get-ChildItem -Path $dir -Directory -ErrorAction SilentlyContinue
+            foreach ($subdir in $subdirs) {
+                $candidate = Join-Path $subdir.FullName "usr\bin\swiftCore.dll"
+                if (Test-Path $candidate) {
+                    $foundRuntime = Join-Path $subdir.FullName "usr\bin"
+                    $foundRuntimeVersion = $subdir.Name
+                    break
+                }
+            }
+        }
+        if ($foundRuntime) { break }
     }
 }
 
@@ -95,7 +163,14 @@ if (-not $foundRuntime) {
     exit 1
 }
 
-Write-Host "Found Swift Runtime at: $foundRuntime"
+if ($toolchainVersion -and $foundRuntimeVersion -ne $toolchainVersion) {
+    Write-Warning "No Swift runtime matching toolchain version $toolchainVersion was found; falling back to runtime version $foundRuntimeVersion."
+}
+
+if (-not $foundRuntimeVersion) {
+    $foundRuntimeVersion = "unknown"
+}
+Write-Host "Selected Swift Runtime: $foundRuntime (version: $foundRuntimeVersion)"
 
 # Create output directory
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null

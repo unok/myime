@@ -6,10 +6,12 @@ MyIME のビルド環境の準備からインストール、開発時の再イ�
 
 - Windows 10/11 (x64) ※ ARM64 は棚上げ中（[upstream-divergence.md](upstream-divergence.md) 参照）
 - Visual Studio 2022（C++ ワークロード）
-- Swift 6.2.1 以上（Windows 版）
+- Swift 6.3.3 以上（Windows 版）
 - Bazelisk
 - Python 3.x
 - Windows SDK 10.0.22621.0 以上
+
+Swift は CI と同じ版を使用すること。Windows の Swift は ABI 安定性がないため、ビルドしたツールチェーンと同じ版のランタイム DLL を同梱する必要があり、`scripts/ci/copy-swift-runtime.ps1` がツールチェーン版に合わせて自動選択する。
 
 Zenzai は既定で CPU 推論のため、ビルド・実行とも GPU は不要。GPU（Vulkan）切替を使う場合のみ Vulkan 対応 GPU とドライバが必要。
 
@@ -137,7 +139,7 @@ gh workflow run "Build x64" --ref <ブランチ名>
 ### Swift ビルドが失敗する
 
 - Visual Studio 2022 の C++ ワークロードがインストールされているか確認
-- Swift 6.2.1 以上がインストールされているか確認（`swift --version`）
+- Swift 6.3.3 以上がインストールされているか確認（`swift --version`）
 - Swift Runtime が正しい場所にあるか確認（`%LOCALAPPDATA%\Programs\Swift\Runtimes\`）
 
 ### Bazel ビルドが失敗する
