@@ -143,7 +143,7 @@ CI（`.github/workflows/build-x64.yml`）は llama.cpp をソースからビル�
 3. セッション層で `idle_resuggest` フラグ付きの再サジェストを実行 → `ConversionOptions` 経由でエンジンまで貫通し、タイポ補正が予算60で走る
 4. 応答の preedit が現在の composition と一致する場合のみ `last_output` を差し替えて UI 更新（composition には触らない。打鍵が割り込んでいたら破棄）
 
-予測経路でのタイポ候補は `dictionary_predictor.cc`（`RemoveMissSpelledCandidates` の除外ガード + トリム後の末尾再追加。再追加は最大 3 件をコスト順、重複は value 一致で除外し、suggestion filter（不適切語ブロック）は通す。トリムと誤字位置ルールだけを迂回する。契約は `dictionary_predictor_myime_test` で固定）と `merger_rewriter.h`（サジェスト件数トリムからの `SPELLING_CORRECTION` 保護）を通って表示に到達する。ヘッドレス検証は `session_handler_tool` の `REQUEST_TYPO_SUGGESTION` コマンドで可能。
+予測経路でのタイポ候補は `dictionary_predictor.cc`（`RemoveMissSpelledCandidates` の除外ガード + トリム後の末尾再追加。再追加は最大 3 件をコストの小さい順（昇順、上位候補から）、重複は value 一致で除外し、suggestion filter（不適切語ブロック）は通す。トリムと誤字位置ルールだけを迂回する。契約は `dictionary_predictor_myime_test` で固定）と `merger_rewriter.h`（サジェスト件数トリムからの `SPELLING_CORRECTION` 保護）を通って表示に到達する。ヘッドレス検証は `session_handler_tool` の `REQUEST_TYPO_SUGGESTION` コマンドで可能。
 
 ## ユーザー辞書と単語登録
 
