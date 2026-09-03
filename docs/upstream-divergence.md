@@ -104,7 +104,7 @@ fork 版にあった「モデルとコンテキストを ZenzContext が直接�
 `src/swift-tokenizers/` subtree は廃止し、upstream `huggingface/swift-transformers` 系を SwiftPM のリモート依存で使う（[ADR-0002](adr/0002-retire-swift-tokenizers-fork.md)）。
 
 - AzooKey の Package.swift → `unok/swift-tokenizers` の `windows-upstream-patch` ブランチ。基点は `huggingface/swift-transformers` main（1.3.3 以降）。差分は 2 コミット（fnmatch シム、swift-huggingface フォークへの依存差し替え）
-- その依存 → `unok/swift-huggingface` の `windows-patch` ブランチ。基点は `huggingface/swift-huggingface` main（0.10.0）。差分は 1 コミット（FileLock スタブ、fnmatch シム、cachesDirectory シム）
+- その依存 → `unok/swift-huggingface` の `windows-patch` ブランチ。基点は `huggingface/swift-huggingface` main（0.10.0）。差分は 2 コミット（FileLock スタブ・fnmatch シム・cachesDirectory シム、EventSource 依存の fork 差し替え）
 - 旧ブランチ `windows-swift621-patch` は履歴として fork に残置
 - swift-huggingface の依存 EventSource → `unok/EventSource` の `windows-patch` ブランチ（基点 `mattt/EventSource` 1.5.1）。差分は 1 コミット 3 行: `waitForLinuxCompletion()` の `CheckedContinuation` を `UnsafeContinuation` に置換。Windows の swift-frontend 6.3.3（+Asserts）が同関数の IR 生成で `Cannot dereference a null Type!` のアサーションで落ちるための回避で、6.2.1 では不要だった（2026-09-03、#50）。upstream の EventSource か Swift 側で解消したら fork を廃止し `mattt/EventSource` に戻す
 
