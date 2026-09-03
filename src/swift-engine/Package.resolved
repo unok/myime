@@ -4,10 +4,10 @@
     {
       "identity" : "eventsource",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/mattt/EventSource.git",
+      "location" : "https://github.com/unok/EventSource.git",
       "state" : {
-        "revision" : "86b5096ac59ab46e66bd1f6377c604bc1dab0bc2",
-        "version" : "1.5.1"
+        "branch" : "windows-patch",
+        "revision" : "2381166c0976f656863e89dd9e0f1062480c7f65"
       }
     },
     {
@@ -52,7 +52,7 @@
       "location" : "https://github.com/unok/swift-huggingface.git",
       "state" : {
         "branch" : "windows-patch",
-        "revision" : "77881bda158cfdf61812c650aadef4c207094bf5"
+        "revision" : "0205f69167827d891495e82a1c41f087e0321b5d"
       }
     },
     {
