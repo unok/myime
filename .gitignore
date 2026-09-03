@@ -55,3 +55,6 @@ tests/compile.log
 
 # local task-runner state
 .takt/
+
+# Python
+__pycache__/
