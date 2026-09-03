@@ -41,7 +41,7 @@ echo Checking Swift...
 where swift >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo   [ERROR] Swift not found in PATH
-    echo   Please install Swift 6.2.1 or later from:
+    echo   Please install Swift 6.3.3 or later from:
     echo   https://www.swift.org/download/
     set "DEPS_OK=0"
 ) else (
