@@ -20,11 +20,89 @@ private let maxTypoCandidates = 3
 /// 置換型(まと→的)で +2.5、削除型はモーラ換算後 +1.5 程度に留まる
 private let typoImprovementMargin: PValue = 4.0
 
+/// 短文タイポ補正の再校正値。予算60の実測では2文字の誤検出は長さゲートで消えた一方、
+/// 正しい3〜4文字語の全文 literal は -3.08〜-4.48/mora（昨日、家族、リンゴ、未完等）に
+/// 分布した。入力全体を単語1個で変換できれば原則 solid とし、-5.0/mora 未満の極端に
+/// 弱い literal（がこう→画稿 -5.3）だけ fragment に戻す。solid 時は literal を 2.0/mora
+/// 以上上回る補正だけ採用する（掃引: 真陽性 7/7 を保ったまま3文字以上122件で
+/// 誤検出0（2文字以下は最小入力長で除外）。改善幅 1.0 では みかん→民間 +1.64 が残る）。
+private let shortTypoMarginPerMora = -1.8
+private let solidLiteralPerMora = -5.0
+private let solidLiteralImprovement = 2.0
+private let minimumTypoInputLength = 3
+
 struct TypoCandidate {
     let text: String
     let value: PValue
     let correspondingCount: Int
     let correctedReading: String
+    let lastCid: Int?
+    let conjugationForm: String?
+
+    init(
+        text: String,
+        value: PValue,
+        correspondingCount: Int,
+        correctedReading: String,
+        lastCid: Int? = nil,
+        conjugationForm: String? = nil
+    ) {
+        self.text = text
+        self.value = value
+        self.correspondingCount = correspondingCount
+        self.correctedReading = correctedReading
+        self.lastCid = lastCid
+        self.conjugationForm = conjugationForm
+    }
+}
+
+private let nonterminalConjugationForms: Set<String> = [
+    "未然形", "未然ウ接続", "未然特殊", "未然ヌ接続", "未然レル接続",
+    "連用形", "連用タ接続", "連用テ接続", "連用デ接続", "連用ニ接続", "連用ゴザイ接続",
+    "体言接続", "体言接続特殊", "体言接続特殊２", "ガル接続",
+    // 縮約形は単独で文末に立たないため、仮定形は残して仮定縮約だけを落とす。
+    "仮定縮約１", "仮定縮約２"
+]
+
+internal struct TypoCandidateMorphology: Equatable {
+    let cid: Int
+    let conjugationType: String
+    let conjugationForm: String
+    let isNonterminal: Bool
+}
+
+/// 最終要素の右CIDを優先し、IPADIC表に無い場合だけ左CIDへフォールバックする。
+/// 文語・*型は一律除外。形容詞・アウオ段,文語基本形 は活用型が現代型なのでここには来ない。
+/// 上二・下二・四段は文語・*型ではなく、現状どおり活用型による一律除外の対象外。
+internal func typoCandidateMorphology(data: [DicdataElement]) -> TypoCandidateMorphology? {
+    guard let last = data.last else { return nil }
+    let cidAndFeature: (Int, String)?
+    if let feature = IpadicCidTable.cidToFeature[last.rcid] {
+        cidAndFeature = (last.rcid, feature)
+    } else if let feature = IpadicCidTable.cidToFeature[last.lcid] {
+        cidAndFeature = (last.lcid, feature)
+    } else {
+        cidAndFeature = nil
+    }
+    guard let (cid, feature) = cidAndFeature else { return nil }
+    let fields = feature.split(separator: ",", omittingEmptySubsequences: false)
+    guard fields.count >= 6 else { return nil }
+    let conjugationType = String(fields[4])
+    let conjugationForm = String(fields[5])
+    let isLiteraryNonterminal = conjugationType.hasPrefix("文語・")
+    return TypoCandidateMorphology(
+        cid: cid,
+        conjugationType: conjugationType,
+        conjugationForm: conjugationForm,
+        isNonterminal: nonterminalConjugationForms.contains(conjugationForm) || isLiteraryNonterminal
+    )
+}
+
+internal func shouldFilterNonterminalTypoCandidate(
+    data: [DicdataElement],
+    hasLeftoverAlphabet: Bool
+) -> Bool {
+    !hasLeftoverAlphabet && (typoCandidateMorphology(data: data)?.isNonterminal ?? false)
 }
 
 /// 閾値の再校正用の診断出力。環境変数 AZOOKEY_TYPO_DEBUG が設定されている時だけ出す。
@@ -123,6 +201,43 @@ private func literalBaseline(
     return (baselineCandidates, bestPerMora)
 }
 
+/// 1パス目にある、入力全体を単一語でカバーする非恒等 literal の最良値。
+private func literalWholeBest(
+    existingCandidates: [Candidate],
+    originalKeyCount: Int
+) -> (text: String, perMora: Double)? {
+    existingCandidates
+        .filter {
+            $0.rubyCount == originalKeyCount
+                && $0.data.count == 1
+                && $0.text != foldedToHiragana($0.data[0].ruby)
+                && $0.text != $0.data[0].ruby.toKatakana()
+        }
+        .map {
+            ($0.text, Double($0.value) / Double(max(1, $0.rubyCount)))
+        }
+        .max { $0.1 < $1.1 }
+}
+
+private enum ShortTypoSelectionGate: String, Equatable {
+    case solid
+    case fragment
+    case tooShort = "too_short"
+}
+
+private func shortTypoSelectionGate(
+    literalWholeBest: (text: String, perMora: Double)?,
+    originalKeyCount: Int
+) -> ShortTypoSelectionGate {
+    if originalKeyCount < minimumTypoInputLength {
+        return .tooShort
+    }
+    if let literalWholeBest, literalWholeBest.perMora >= solidLiteralPerMora {
+        return .solid
+    }
+    return .fragment
+}
+
 internal func selectTypoCandidates(
     _ typoCandidates: [TypoCandidate],
     existingCandidates: [Candidate],
@@ -132,6 +247,16 @@ internal func selectTypoCandidates(
         existingCandidates: existingCandidates,
         originalKeyCount: originalKeyCount
     ) else {
+        return []
+    }
+
+    let wholeBest = originalKeyCount <= 8
+        ? literalWholeBest(existingCandidates: existingCandidates, originalKeyCount: originalKeyCount)
+        : nil
+    let gate = originalKeyCount <= 8
+        ? shortTypoSelectionGate(literalWholeBest: wholeBest, originalKeyCount: originalKeyCount)
+        : .fragment
+    guard gate != .tooShort else {
         return []
     }
 
@@ -145,13 +270,13 @@ internal func selectTypoCandidates(
             break
         }
         let candidatePerMora = Double(candidate.value) / Double(max(1, candidate.correctedReading.count))
-        // 実測校正: 真の補正は差分 +1.48 〜 -1.66、明らかなゴミは -2.17 以下。
-        // 「わたし→あたし」(w 脱落)のように差分 -1.42 の妥当な補正もあるため、
-        // 取りこぼしを避ける側に倒して -2.0 を採用していた(末尾表示なのでノイズ許容)。
-        // 辞書 v3.1 では基準側の断片(が/1)が -1.48 → -1.79 に下がり、
-        // がっこう→顎骨(差分 -1.95)が -2.0 を通り抜けたため -1.8 に詰める
-        // (真の補正の最悪 -1.66 との余裕 0.14、顎骨との余裕 0.15)
-        if candidatePerMora < baseline.bestPerMora - 1.8 {
+        // 確固とした単語がある場合はそれ自身からの改善を要求する。無い場合だけ、
+        // 真陽性の最悪差分 -1.66 と既知ゴミ -1.95 の間に置いた従来 -1.8 を使う。
+        if gate == .solid, let wholeBest {
+            if candidatePerMora <= wholeBest.perMora + solidLiteralImprovement {
+                continue
+            }
+        } else if candidatePerMora < baseline.bestPerMora + shortTypoMarginPerMora {
             continue
         }
         guard !seenTexts.contains(candidate.text) else {
@@ -187,9 +312,25 @@ private func typoSelectionDebugMessage(
         .joined(separator: " ")
     let ranked = typoCandidates
         .sorted { $0.value > $1.value }
-        .map { "\($0.text)/\($0.correctedReading)/\($0.value)" }
+        .map {
+            "\($0.text)/\($0.correctedReading)/\($0.value)/\($0.lastCid.map { String($0) } ?? "nil")/\($0.conjugationForm ?? "nil")"
+        }
         .joined(separator: " ")
     return "[typo] key=\(key) literalBestPerMora=\(baseline.map { String($0.bestPerMora) } ?? "nil") literalTop=\(literalTop) ranked=\(ranked)"
+}
+
+private func typoSelectionGateDebugMessage(
+    key: String,
+    existingCandidates: [Candidate],
+    originalKeyCount: Int
+) -> String {
+    let wholeBest = originalKeyCount <= 8
+        ? literalWholeBest(existingCandidates: existingCandidates, originalKeyCount: originalKeyCount)
+        : nil
+    let gate = originalKeyCount <= 8
+        ? shortTypoSelectionGate(literalWholeBest: wholeBest, originalKeyCount: originalKeyCount)
+        : .fragment
+    return "[typo] key=\(key) literalWholeBestPerMora=\(wholeBest.map { String($0.perMora) } ?? "nil") literalWholeBestText=\(wholeBest?.text ?? "nil") gate=\(gate.rawValue)"
 }
 
 internal func inferredTypoCorrectionRange(in key: String, data: [DicdataElement]) -> Range<Int>? {
@@ -276,11 +417,14 @@ func makeTypoCandidates(for key: String, existingCandidates: [Candidate]) -> [Ty
         return []
     }
 
+    let originalKeyCount = key.count
+    let hasLeftoverAlphabet = containsAlphabet(key)
+    guard hasLeftoverAlphabet || originalKeyCount >= minimumTypoInputLength else {
+        return []
+    }
     let existingTexts = Set(existingCandidates.map(\.text))
     var typoCandidates: [TypoCandidate] = []
     let typoOptions = getTypoOptions()
-    let originalKeyCount = key.count
-    let hasLeftoverAlphabet = containsAlphabet(key)
     let shouldTryPositionedCorrection = !hasLeftoverAlphabet && originalKeyCount >= 9
     let bestCoveringCandidateForWhole: Candidate?
     if !hasLeftoverAlphabet && originalKeyCount >= 9 {
@@ -340,13 +484,22 @@ func makeTypoCandidates(for key: String, existingCandidates: [Candidate]) -> [Ty
             var text = ComposingText()
             text.insertAtCursorPosition(correctedReading, inputStyle: .direct)
             let result = typoConv.requestCandidates(text, options: typoOptions)
-            typoDebugLog("[typo] key=\(key) reading=\(correctedReading) bar=\(improvementBar.map { String(describing: $0) } ?? "nil") top=" + result.mainResults.prefix(6).map { "\($0.text)/\($0.rubyCount)/\($0.value)" }.joined(separator: " "))
+            typoDebugLog(
+                "[typo] key=\(key) reading=\(correctedReading) bar=\(improvementBar.map { String(describing: $0) } ?? "nil") top="
+                    + result.mainResults.prefix(6).map { candidate in
+                        let morphology = typoCandidateMorphology(data: candidate.data)
+                        return "\(candidate.text)/\(candidate.rubyCount)/\(candidate.value)/"
+                            + "\(morphology.map { String($0.cid) } ?? "nil")/"
+                            + "\(morphology?.conjugationForm ?? "nil")/"
+                            + "\(morphology?.isNonterminal == true ? "nonterminal" : "terminal")"
+                    }.joined(separator: " ")
+            )
 
             // mainResults の並びは表記バリエーション(value=-190 の素通し系)が先頭に
             // 来ることがあるため、先頭ではなく value 最大の候補を選ぶ。
             // ひらがな表記が正解の語(こんにちは 等)があるため、補正読みと同一の
             // テキストは除外しない。数字・アルファベット混入(に→2 等の過大評価)は除外
-            let best = result.mainResults
+            let eligibleCandidates = result.mainResults
                 .filter {
                     // 補正読み全体をカバーする候補のみ(接頭辞断片を除外)
                     $0.rubyCount == correctedReading.count
@@ -368,32 +521,44 @@ func makeTypoCandidates(for key: String, existingCandidates: [Candidate]) -> [Ty
                         // 枠を食い潰して本命に届かなくなる(実測で確認)
                         && (improvementBar == nil || $0.value > improvementBar!)
                 }
+            let terminalCandidates = eligibleCandidates.filter { candidate in
+                let morphology = typoCandidateMorphology(data: candidate.data)
+                let isFiltered = shouldFilterNonterminalTypoCandidate(
+                    data: candidate.data,
+                    hasLeftoverAlphabet: hasLeftoverAlphabet
+                )
+                typoDebugLog(
+                    "[typo] key=\(key) reading=\(correctedReading) candidate=\(candidate.text) "
+                        + "value=\(candidate.value) lastCid=\(morphology.map { String($0.cid) } ?? "nil") "
+                        + "form=\(morphology?.conjugationForm ?? "nil") "
+                        + "decision=\(isFiltered ? "nonterminal" : "eligible")"
+                )
+                return !isFiltered
+            }
+            let best = terminalCandidates
                 .max { $0.value < $1.value }
             // ひらがな素通しより漢字変換を優先する。
             // 残留系では素通しも許容しているため、そのままだと
             // 「わたしはがくせいでした」のようにひらがなのまま出てしまう
             // (実測で確認)。ただし「です」のようにひらがなが正解の場合も
             // あるので、非素通しが無いときだけ素通しを使う
-            let bestConverted = result.mainResults
+            let bestConverted = terminalCandidates
                 .filter {
                     $0.text != correctedReading
-                        && $0.rubyCount == correctedReading.count
-                        && !existingTexts.contains($0.text)
-                        && !containsAsciiLikeNoise($0.text)
-                        && !isScriptVariantOfReading($0.text, reading: correctedReading)
-                        && $0.value > PValue(-6 * correctedReading.count)
-                        && (improvementBar == nil || $0.value > improvementBar!)
                 }
                 .max { $0.value < $1.value }
             // 漢字優先は残留系のみ。痕跡なし系では「こんにちは」のように
             // ひらがなが正解のことがあり、優先すると壊れる(実測で確認)
             let chosen = hasLeftoverAlphabet ? (bestConverted ?? best) : best
             if let best = chosen {
+                let morphology = typoCandidateMorphology(data: best.data)
                 typoCandidates.append(TypoCandidate(
                     text: best.text,
                     value: best.value,
                     correspondingCount: originalKeyCount,
-                    correctedReading: correctedReading
+                    correctedReading: correctedReading,
+                    lastCid: morphology?.cid,
+                    conjugationForm: morphology?.conjugationForm
                 ))
             }
         }
@@ -434,6 +599,11 @@ func makeTypoCandidates(for key: String, existingCandidates: [Candidate]) -> [Ty
     typoDebugLog(typoSelectionDebugMessage(
         key: key,
         typoCandidates: typoCandidates,
+        existingCandidates: existingCandidates,
+        originalKeyCount: originalKeyCount
+    ))
+    typoDebugLog(typoSelectionGateDebugMessage(
+        key: key,
         existingCandidates: existingCandidates,
         originalKeyCount: originalKeyCount
     ))

@@ -1,0 +1,629 @@
+{
+  "positives": [
+    {
+      "input": "がこう",
+      "expect": "学校",
+      "category": "っ挿入",
+      "note": "促音の入力漏れ"
+    },
+    {
+      "input": "こにちは",
+      "expect": "こんにちは",
+      "category": "ん挿入",
+      "note": "撥音の入力漏れ"
+    },
+    {
+      "input": "ありがつお",
+      "expect": "ありがとう",
+      "category": "転置",
+      "note": "同母音音節の転置"
+    },
+    {
+      "input": "ほにゃ",
+      "expect": "本屋",
+      "category": "ん分割",
+      "note": "にゃをん＋やへ分割"
+    },
+    {
+      "input": "きょうお",
+      "expect": "京都",
+      "category": "子音補完",
+      "note": "母音だけになった音節の子音を補完"
+    },
+    {
+      "input": "でs",
+      "expect": "です",
+      "category": "残留アルファベット",
+      "note": "末尾ローマ字のかな化"
+    },
+    {
+      "input": "ありがとうございまs",
+      "expect": "ありがとうございます",
+      "category": "残留アルファベット",
+      "note": "typo_conversion_test.py では「有難うございます」も許容"
+    },
+    {
+      "input": "しゃsひん",
+      "expect": "写真",
+      "category": "残留アルファベット",
+      "note": "語中ローマ字のかな化"
+    }
+  ],
+  "negatives": [
+    {
+      "input": "わたし",
+      "category": "非タイポ",
+      "note": "「私」は確固とした語なので「あたし」への補正は出さない"
+    },
+    {
+      "input": "こんにちは",
+      "category": "非タイポ",
+      "note": "正しいひらがな表記"
+    },
+    {
+      "input": "ありがとう",
+      "category": "非タイポ",
+      "note": "正しいひらがな表記"
+    },
+    {
+      "input": "がっこう",
+      "category": "非タイポ",
+      "note": "既知の誤検出候補は顎骨（per-mora 差分 -1.95）"
+    },
+    {
+      "input": "にほんご",
+      "category": "非タイポ",
+      "note": "正しい入力"
+    },
+    {
+      "input": "きょう",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "あした",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "きのう",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "おはよう",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "こんばんは",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "さようなら",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "すみません",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "おねがい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "かいしゃ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "せんせい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "がくせい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "ともだち",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "かぞく",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "でんわ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "でんしゃ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "くるま",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "じてんしゃ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "えき",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "みち",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "まち",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "やま",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "かわ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "うみ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "そら",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "あめ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "ゆき",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "かぜ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "はれ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "はな",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "とり",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "いぬ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "ねこ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "さかな",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "たべもの",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "のみもの",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "みず",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "おちゃ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "こーひー",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "ごはん",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "ぱん",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "にく",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "やさい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "くだもの",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "りんご",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "みかん",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "ばなな",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "たまご",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "しお",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "さとう",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "しょうゆ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "あさ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "ひる",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "よる",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "まいにち",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "らいしゅう",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "せんげつ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "ことし",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "じかん",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "ふん",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "びょう",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "ようび",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "げつようび",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "にほん",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "とうきょう",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "おおさか",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "きょうと",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "ほっかいどう",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "おきなわ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "てんき",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "じしん",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "たいふう",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "しごと",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "やすみ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "べんきょう",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "しけん",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "しゅくだい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "としょかん",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "びょういん",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "くすり",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "けんこう",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "げんき",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "からだ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "あたま",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "かお",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "て",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "あし",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "こころ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "きもち",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "たのしい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "うれしい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "かなしい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "さびしい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "おおきい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "ちいさい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "あたらしい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "ふるい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "たかい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "やすい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "はやい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "おそい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "あつい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "さむい",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "いく",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "くる",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "かえる",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "みる",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "きく",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "はなす",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "よむ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "かく",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "たべる",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "のむ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "ねる",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "おきる",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "あるく",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "はしる",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "まつ",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "かう",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "うる",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "つかう",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "つくる",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "おもう",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "しる",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "わかる",
+      "note": "short clean word (calibration)"
+    },
+    {
+      "input": "できる",
+      "note": "short clean word (calibration)"
+    }
+  ],
+  "clean_sentences": [
+    "きょうはいいてんきですね",
+    "おはようございますみなさん",
+    "ありがとうございました",
+    {
+      "input": "よろしくおねがいします",
+      "expect_absent": ["んよろしくお願いします"]
+    },
+    "おつかれさまでした",
+    "すみませんおくれます",
+    "あしたはあめがふりそうです",
+    "でんしゃがおくれています",
+    "かいぎをはじめましょう",
+    {
+      "input": "しりょうをおくります",
+      "expect_absent": ["診療を送ります"]
+    },
+    "ごはんをたべにいきませんか",
+    {
+      "input": "きのうはたのしかったです",
+      "expect_absent": ["勤王は楽しかったです"]
+    },
+    {
+      "input": "ちょっとまってください",
+      "expect_absent": ["ちょっと待ってくだしあ"]
+    },
+    "いまむかっています",
+    "もうすこしでつきます",
+    "ほんとうにありがとう",
+    "たんじょうびおめでとう",
+    "しゅくだいがおわりません",
+    "ねむくてしかたがない",
+    "みずをのみたいです",
+    "えきまであるいていきます",
+    "にちようびにえいがをみにいく",
+    "しごとがいそがしいです",
+    "かぜをひいてしまいました",
+    "はやくねたほうがいいですよ",
+    {
+      "input": "おなかがすきました",
+      "expect_absent": ["中が好きました"]
+    },
+    "あたらしいくつをかいました",
+    "でんきをけしてください",
+    {
+      "input": "まどをあけてもいいですか",
+      "expect_absent": ["的を開けてもいいですか"]
+    },
+    "こんしゅうまつはいえにいます"
+  ]
+}

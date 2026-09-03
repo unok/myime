@@ -57,6 +57,42 @@ final class UserDictionaryTests: XCTestCase {
         XCTAssertEqual(entries.map { $0.lcid }, [1283, 19, 1281, 3])
     }
 
+    func testMapsIPADICFeaturesToCidsAndFallsBackForUnknownFeature() throws {
+        let cases = [
+            ("名詞,一般,*,*,*,*", 1285),
+            ("名詞,固有名詞,人名,姓,*,*", 1290),
+            ("名詞,数,*,*,*,*", 1295),
+            ("動詞,自立,*,*,五段・ワ行促音便,連用形", 832),
+            ("形容詞,自立,*,*,形容詞・アウオ段,基本形", 19),
+            ("助詞,終助詞,*,*,*,*", 279),
+            ("未知品詞,未知分類,*,*,*,*", 1285),
+        ]
+
+        for (pos, expectedCid) in cases {
+            let json = """
+                [{"reading":"てすと","word":"試験語","pos":"\(pos)"}]
+                """
+            let entries = try decodeDynamicUserDictionary(json)
+            XCTAssertEqual(entries[0].lcid, expectedCid, "pos: \(pos)")
+            XCTAssertEqual(entries[0].rcid, expectedCid, "pos: \(pos)")
+        }
+    }
+
+    func testAlphabetSymbolFeatureUsesEnglishWordMid() throws {
+        let json = #"[{"reading":"えーびーしー","word":"ABC","pos":"記号,アルファベット,*,*,*,*"}]"#
+        let entries = try decodeDynamicUserDictionary(json)
+
+        XCTAssertEqual(entries[0].mid, MIDData.英単語.mid)
+    }
+
+    func testLegacyFamilyNameCategoryRemainsCompatible() throws {
+        let json = #"[{"reading":"うの","word":"宇野","pos":"family_name"}]"#
+        let entries = try decodeDynamicUserDictionary(json)
+
+        XCTAssertEqual(entries[0].lcid, 1290)
+        XCTAssertEqual(entries[0].rcid, 1290)
+    }
+
     func testEmptyFieldsAreDroppedAndEmptyArrayClearsDictionary() throws {
         XCTAssertTrue(try decodeDynamicUserDictionary("[]").isEmpty)
         let json = #"[{"reading":"","word":"空","pos":"noun"}]"#

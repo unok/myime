@@ -81,6 +81,96 @@ final class TypoCorrectionPassTests: XCTestCase {
         XCTAssertNil(bestScoredCoveringCandidate(in: [passthrough], key: key))
     }
 
+    func testNonterminalConjugationIsFilteredButBasicFormRemains() {
+        let tsukai = makeData(word: "使い", ruby: "ツカイ", value: -3, cid: 832)
+        let tsukau = makeData(word: "使う", ruby: "ツカウ", value: -3, cid: 817)
+
+        let nonterminal = typoCandidateMorphology(data: [tsukai])
+        XCTAssertEqual(nonterminal?.conjugationForm, "連用形")
+        XCTAssertEqual(nonterminal?.isNonterminal, true)
+        XCTAssertTrue(shouldFilterNonterminalTypoCandidate(
+            data: [tsukai], hasLeftoverAlphabet: false))
+        XCTAssertFalse(shouldFilterNonterminalTypoCandidate(
+            data: [tsukai], hasLeftoverAlphabet: true))
+
+        let terminal = typoCandidateMorphology(data: [tsukau])
+        XCTAssertEqual(terminal?.conjugationForm, "基本形")
+        XCTAssertEqual(terminal?.isNonterminal, false)
+        XCTAssertFalse(shouldFilterNonterminalTypoCandidate(
+            data: [tsukau], hasLeftoverAlphabet: false))
+    }
+
+    func testPhonologicalBasicFormIsTerminalButContractedConditionalIsNot() {
+        let colloquialTerminal = typoCandidateMorphology(data: [
+            makeData(word: "たい", ruby: "タイ", value: -3, cid: 440)
+        ])
+        XCTAssertEqual(colloquialTerminal?.conjugationForm, "音便基本形")
+        XCTAssertEqual(colloquialTerminal?.isNonterminal, false)
+
+        let colloquialNegativeTerminal = typoCandidateMorphology(data: [
+            makeData(word: "ねえ", ruby: "ネエ", value: -3, cid: 469)
+        ])
+        XCTAssertEqual(colloquialNegativeTerminal?.conjugationForm, "音便基本形")
+        XCTAssertEqual(colloquialNegativeTerminal?.isNonterminal, false)
+
+        let contractedConditional = typoCandidateMorphology(data: [
+            makeData(word: "たい", ruby: "タイ", value: -3, cid: 442)
+        ])
+        XCTAssertEqual(contractedConditional?.conjugationForm, "仮定縮約１")
+        XCTAssertEqual(contractedConditional?.isNonterminal, true)
+    }
+
+    func testLiteraryTypeIsAlwaysFilteredButClassicalConjugationTypeIsNotBlanketFiltered() {
+        let literaryBasic = typoCandidateMorphology(data: [
+            makeData(word: "き", ruby: "キ", value: -3, cid: 516)
+        ])
+        XCTAssertEqual(literaryBasic?.conjugationType, "文語・キ")
+        XCTAssertEqual(literaryBasic?.conjugationForm, "基本形")
+        XCTAssertEqual(literaryBasic?.isNonterminal, true)
+
+        let lowerBigramBasic = typoCandidateMorphology(data: [
+            makeData(word: "つ", ruby: "ツ", value: -3, cid: 370)
+        ])
+        XCTAssertEqual(lowerBigramBasic?.conjugationType, "下二・タ行")
+        XCTAssertEqual(lowerBigramBasic?.conjugationForm, "基本形")
+        XCTAssertEqual(lowerBigramBasic?.isNonterminal, false)
+    }
+
+    func testKatakanaTranscriptionDoesNotBecomeLiteralWholeBest() {
+        let selected = selectTypoCandidates(
+            [makeTypoCandidate(text: "本屋", reading: "ほんや", value: -2.4)],
+            existingCandidates: [
+                makeCandidate(text: "ホニャ", reading: "ほにゃ", value: -2.8, composingCount: 3)
+            ],
+            originalKeyCount: 3
+        )
+
+        // ホニャを solid literal と誤認すると -0.8 <= -0.933... + 2.0 で落ちる。
+        XCTAssertEqual(selected.map(\.text), ["本屋"])
+    }
+
+    func testSolidLiteralMinusFivePointZeroBoundary() {
+        let typo = [makeTypoCandidate(text: "補正", reading: "ほせい", value: -12.9)]
+        let atBoundary = selectTypoCandidates(
+            typo,
+            existingCandidates: [
+                makeCandidate(text: "基準", reading: "きじゅ", value: -15.0, composingCount: 3)
+            ],
+            originalKeyCount: 3
+        )
+        let belowBoundary = selectTypoCandidates(
+            typo,
+            existingCandidates: [
+                makeCandidate(text: "基準", reading: "きじゅ", value: -15.003, composingCount: 3)
+            ],
+            originalKeyCount: 3
+        )
+
+        // -5.0/mora は solid（+2.0 を厳密に超えず不採用）、直下は fragment。
+        XCTAssertTrue(atBoundary.isEmpty)
+        XCTAssertEqual(belowBoundary.map(\.text), ["補正"])
+    }
+
     func testSelectTypoCandidatesCalibratedExamples() {
         struct TestCase {
             let name: String
@@ -122,6 +212,31 @@ final class TypoCorrectionPassTests: XCTestCase {
                 typoCandidates: [makeTypoCandidate(text: "京都", reading: "きょうと", value: -10.7536)],
                 expectedTexts: ["京都"]),
             TestCase(
+                name: "solid whole literal rejects a marginal improvement",
+                existingCandidates: [
+                    makeCandidate(text: "今日", reading: "きょう", value: -8.1, composingCount: 3)
+                ],
+                originalKeyCount: 3,
+                typoCandidates: [makeTypoCandidate(text: "良う", reading: "りょう", value: -7.8)],
+                expectedTexts: []),
+            TestCase(
+                name: "weak whole literal keeps fragment margin behavior",
+                existingCandidates: [
+                    makeCandidate(text: "画稿", reading: "がこう", value: -14.1, composingCount: 3),
+                    makeCandidate(text: "が", reading: "が", value: -1.0, composingCount: 1)
+                ],
+                originalKeyCount: 3,
+                typoCandidates: [makeTypoCandidate(text: "学校", reading: "がっこう", value: -9.2)],
+                expectedTexts: ["学校"]),
+            TestCase(
+                name: "two-character non-alphabet input is too short",
+                existingCandidates: [
+                    makeCandidate(text: "雪", reading: "ゆき", value: -8.0, composingCount: 2)
+                ],
+                originalKeyCount: 2,
+                typoCandidates: [makeTypoCandidate(text: "行こ", reading: "ゆこ", value: -3.0)],
+                expectedTexts: []),
+            TestCase(
                 name: "prediction-only baseline falls back and rejects weak typo",
                 existingCandidates: [
                     makeCandidate(text: "予測候補", reading: "よそく", value: -3.0, composingCount: 4),
@@ -139,27 +254,27 @@ final class TypoCorrectionPassTests: XCTestCase {
             TestCase(
                 name: "value cutoff removes candidates more than four below best",
                 existingCandidates: [
-                    makeCandidate(text: "基準", reading: "き", value: -10.0, composingCount: 1)
+                    makeCandidate(text: "基準", reading: "きじゅ", value: -30.0, composingCount: 3)
                 ],
-                originalKeyCount: 1,
+                originalKeyCount: 3,
                 typoCandidates: [
-                    makeTypoCandidate(text: "最良", reading: "さ", value: -5.0),
-                    makeTypoCandidate(text: "境界", reading: "か", value: -9.0),
-                    makeTypoCandidate(text: "圏外", reading: "け", value: -9.1)
+                    makeTypoCandidate(text: "最良", reading: "さい", value: -5.0),
+                    makeTypoCandidate(text: "境界", reading: "かい", value: -9.0),
+                    makeTypoCandidate(text: "圏外", reading: "けん", value: -9.1)
                 ],
                 expectedTexts: ["最良", "境界"]),
             TestCase(
                 name: "result count is capped at three",
                 existingCandidates: [
-                    makeCandidate(text: "基準", reading: "き", value: -10.0, composingCount: 1)
+                    makeCandidate(text: "基準", reading: "きじゅ", value: -30.0, composingCount: 3)
                 ],
-                originalKeyCount: 1,
+                originalKeyCount: 3,
                 typoCandidates: [
-                    makeTypoCandidate(text: "第一", reading: "い", value: -1.0),
-                    makeTypoCandidate(text: "第二", reading: "に", value: -2.0),
-                    makeTypoCandidate(text: "第三", reading: "さ", value: -3.0),
-                    makeTypoCandidate(text: "第四", reading: "し", value: -4.0),
-                    makeTypoCandidate(text: "第五", reading: "ご", value: -5.0)
+                    makeTypoCandidate(text: "第一", reading: "いち", value: -1.0),
+                    makeTypoCandidate(text: "第二", reading: "にい", value: -2.0),
+                    makeTypoCandidate(text: "第三", reading: "さん", value: -3.0),
+                    makeTypoCandidate(text: "第四", reading: "しい", value: -4.0),
+                    makeTypoCandidate(text: "第五", reading: "ごお", value: -5.0)
                 ],
                 expectedTexts: ["第一", "第二", "第三"])
         ]
@@ -192,7 +307,7 @@ final class TypoCorrectionPassTests: XCTestCase {
         TypoCandidate(text: text, value: value, correspondingCount: reading.count, correctedReading: reading)
     }
 
-    private func makeData(word: String, ruby: String, value: PValue) -> DicdataElement {
-        DicdataElement(word: word, ruby: ruby, cid: 0, mid: 0, value: value)
+    private func makeData(word: String, ruby: String, value: PValue, cid: Int = 0) -> DicdataElement {
+        DicdataElement(word: word, ruby: ruby, cid: cid, mid: 0, value: value)
     }
 }
